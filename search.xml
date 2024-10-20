@@ -1,20 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <search>
   <entry>
-    <title>Hello World</title>
-    <url>/2024/10/20/hello-world/</url>
-    <content><![CDATA[<h2 id="第一部分-论神"><a href="#第一部分-论神" class="headerlink" title="第一部分 论神"></a>第一部分 论神</h2><h3 id="界说"><a href="#界说" class="headerlink" title="界说"></a>界说</h3><p>(一) 自因(causa sui)，我理解为这样的东西，它的本质(essentia)即包含存在(existentia)，或者它的本性只能设想为存在着。</p>
-<p>(二) 凡是可以为同性质的另一事物所限制的东西，就叫做自类有限(insuo genere finita)。例如一个物体被称为有限，就是因为除了这个物体之外，我们常常可以设想另一个更大的物体。同样，一个思想可以为另一个思想所限制。但是物体不能限制思想，思想也不能限制物体。</p>
-<p>(三) 实体(substantia)，我理解为在自身内并通过自身而被认识的东西。换言之，形成实体的概念，可以无须借助于他物的概念。</p>
-<p>(四) 属性(attributus)，我理解为由知性(intellectus)看来是构成实体的 本质的东西。</p>
-<p>(五) 样式(modus)，我理解为实体的分殊(affectiones)，亦即在他物内(inalio est)通过他物而被认知的东西(per alium concipitur)。</p>
-<p>(六) 神(Deus)，我理解为绝对无限的存在，亦即具有无限“多”属性的实体，其中每一属性各表示永恒无限的本质。说明 我说神是绝对无限而不说它是自类无限(in suo genereinfinita)，因为仅仅是自类无限的东西，我们可以否认其无限多的属性；而绝对无限者的本性中就具备了一切足以表示本质的东西，却并不包含否定。</p>
-<p>(七) 凡是仅仅由自身本性的必然性而存在、其行为仅仅由它自身决定的东西叫做自由(libera)。反之，凡一物的存在及其行为均按一定的方式为他物所决定，便叫做必然(necessaria，)或受制(coata)。</p>
-<p>(八) 永恒(aeternitas)，我理解为存在的自身，就存在被理解为只能从永恒事物的界说中必然推出而言。</p>
-<p><strong>说明</strong> 因为这样的存在也可以设想为永恒的真理，有如事物的本质，因此不可以用绵延或时间去解释它，虽说绵延可以设想为无始无终。</p>
-]]></content>
-  </entry>
-  <entry>
     <title>Rust学习日志-Rustlings</title>
     <url>/2024/10/20/Rust%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97-Rustlings/</url>
     <content><![CDATA[<h4 id="2024-9-29"><a href="#2024-9-29" class="headerlink" title="2024&#x2F;9&#x2F;29"></a>2024&#x2F;9&#x2F;29</h4><p>配置环境，WSL2下的Rust环境及WSL2与vscode的连接</p>
@@ -263,5 +249,19 @@
       <tags>
         <tag>Rust</tag>
       </tags>
+  </entry>
+  <entry>
+    <title>Hello World</title>
+    <url>/2024/10/20/hello-world/</url>
+    <content><![CDATA[<h2 id="第一部分-论神"><a href="#第一部分-论神" class="headerlink" title="第一部分 论神"></a>第一部分 论神</h2><h3 id="界说"><a href="#界说" class="headerlink" title="界说"></a>界说</h3><p>(一) 自因(causa sui)，我理解为这样的东西，它的本质(essentia)即包含存在(existentia)，或者它的本性只能设想为存在着。</p>
+<p>(二) 凡是可以为同性质的另一事物所限制的东西，就叫做自类有限(insuo genere finita)。例如一个物体被称为有限，就是因为除了这个物体之外，我们常常可以设想另一个更大的物体。同样，一个思想可以为另一个思想所限制。但是物体不能限制思想，思想也不能限制物体。</p>
+<p>(三) 实体(substantia)，我理解为在自身内并通过自身而被认识的东西。换言之，形成实体的概念，可以无须借助于他物的概念。</p>
+<p>(四) 属性(attributus)，我理解为由知性(intellectus)看来是构成实体的 本质的东西。</p>
+<p>(五) 样式(modus)，我理解为实体的分殊(affectiones)，亦即在他物内(inalio est)通过他物而被认知的东西(per alium concipitur)。</p>
+<p>(六) 神(Deus)，我理解为绝对无限的存在，亦即具有无限“多”属性的实体，其中每一属性各表示永恒无限的本质。说明 我说神是绝对无限而不说它是自类无限(in suo genereinfinita)，因为仅仅是自类无限的东西，我们可以否认其无限多的属性；而绝对无限者的本性中就具备了一切足以表示本质的东西，却并不包含否定。</p>
+<p>(七) 凡是仅仅由自身本性的必然性而存在、其行为仅仅由它自身决定的东西叫做自由(libera)。反之，凡一物的存在及其行为均按一定的方式为他物所决定，便叫做必然(necessaria，)或受制(coata)。</p>
+<p>(八) 永恒(aeternitas)，我理解为存在的自身，就存在被理解为只能从永恒事物的界说中必然推出而言。</p>
+<p><strong>说明</strong> 因为这样的存在也可以设想为永恒的真理，有如事物的本质，因此不可以用绵延或时间去解释它，虽说绵延可以设想为无始无终。</p>
+]]></content>
   </entry>
 </search>
