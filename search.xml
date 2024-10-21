@@ -321,7 +321,7 @@
 <li>包含一个外部二进制文件的内容，并将其嵌入到当前字节流中。这在需要将预编译的二进制文件直接打包到程序中的情况下非常有用。</li>
 </ul>
 <p>在初始化<code>AppManager</code>的代码中，<code>UPSafeCell</code>获取内部对象的可变引用，拥有内部可变性。<code>lazy_static!</code> 宏提供了全局变量的运行时初始化功能。对于有些全局变量，其初始化依赖于运行期间才能得到的数据。 此处声明了一个 <code>AppManager</code> 结构的名为 <code>APP_MANAGER</code> 的全局实例， 只有在它第一次被使用到的时候才会进行实际的初始化工作。</p>
-<p>CPU的L1 Cache分为数据缓存(d-cache)和指令缓存(i-cache)，二者的大概介绍[CPU一级缓存L1 D-cache\L1 I-cache与二级缓存L2 cache深度分析_l1cache与l2cache-CSDN博客](<a href="https://blog.csdn.net/chenhuanqiangnihao/article/details/128312905#:~:text=%E9%80%9A%E5%B8%B8%E4%B8%80%E7%BA%A7%E7%BC%93%E5%AD%98%E4%B8%AD%E8%BF%98%E5%88%86%E6%95%B0%E6%8D%AE%E7%BC%93%E5%AD%98%EF%BC%88Data">https://blog.csdn.net/chenhuanqiangnihao/article/details/128312905#:~:text=通常一级缓存中还分数据缓存（Data</a> Cache，D-Cache）和指令缓存（Instruc ti on Cache，I-Cache）。,二者分别用来 存放数据 和执行这些数据的 指令，而且 两者可以同时被CPU访问，减少了争用Cache所造成的冲突，提高了CPU效能。). 代码中我们使用汇编指令 <code>fence.i</code> 清理 i-cache.</p>
+<p>CPU的L1 Cache分为数据缓存(d-cache)和指令缓存(i-cache)，二者的大概介绍<a href="https://blog.csdn.net/chenhuanqiangnihao/article/details/128312905">CPU一级缓存L1 D-cache\L1 I-cache与二级缓存L2 cache深度分析_l1cache与l2cache-CSDN博客</a>. 二者分别用来 存放数据 和执行这些数据的 指令，而且 两者可以同时被CPU访问，减少了争用Cache所造成的冲突，提高了CPU效能。). 代码中我们使用汇编指令 <code>fence.i</code> 清理 i-cache.</p>
 ]]></content>
       <tags>
         <tag>OS</tag>
