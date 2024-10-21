@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 7.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" integrity="sha256-5eIC48iZUHmSlSUz9XtjRyK2mzQkHScZY1WdMaoz74E=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"wdlin233.github.io","root":"/","images":"/images","scheme":"Gemini","darkmode":false,"version":"8.21.0","exturl":false,"sidebar":{"position":"left","width_expanded":320,"width_dual_column":240,"display":"post","padding":18,"offset":12},"hljswrap":true,"copycode":{"enable":false,"style":null},"fold":{"enable":false,"height":500},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"},"path":"/search.xml","localsearch":{"enable":true,"top_n_per_article":1,"unescape":false,"preload":false}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="OS学习日志2024&#x2F;10&#x2F;21chap2实现应用程序一部分，在OS启动时执行了clear_bss()函数，关于BSS的功能，参考静态存储区（Bss、数据段、代码段），堆，栈-CSDN博客. 123456#[no_mangle]#[link_section &#x3D; &quot;.text.entry&quot;]pub extern &quot;C&quot; fn _start(">
+<meta property="og:type" content="article">
+<meta property="og:title" content="OS学习日志">
+<meta property="og:url" content="https://wdlin233.github.io/2024/10/21/OS%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97/index.html">
+<meta property="og:site_name" content="wdlin&#39;s Blog">
+<meta property="og:description" content="OS学习日志2024&#x2F;10&#x2F;21chap2实现应用程序一部分，在OS启动时执行了clear_bss()函数，关于BSS的功能，参考静态存储区（Bss、数据段、代码段），堆，栈-CSDN博客. 123456#[no_mangle]#[link_section &#x3D; &quot;.text.entry&quot;]pub extern &quot;C&quot; fn _start(">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-21T12:38:17.000Z">
+<meta property="article:modified_time" content="2024-10-21T12:39:51.849Z">
+<meta property="article:author" content="wdlin233">
+<meta property="article:tag" content="OS">
+<meta name="twitter:card" content="summary">
+
+
+<link rel="canonical" href="https://wdlin233.github.io/2024/10/21/OS%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://wdlin233.github.io/2024/10/21/OS%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97/","path":"2024/10/21/OS学习日志/","title":"OS学习日志"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>OS学习日志 | wdlin's Blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+        <span class="toggle-line"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">wdlin's Blog</p>
+      <i class="logo-line"></i>
+    </a>
+      <p class="site-subtitle" itemprop="description">希望本是无所谓有，无所谓无的</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+<nav class="site-nav">
+  <ul class="main-menu menu"><li class="menu-item menu-item-home"><a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a></li><li class="menu-item menu-item-about"><a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a></li><li class="menu-item menu-item-tags"><a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a></li><li class="menu-item menu-item-archives"><a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a></li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+      <div class="search-header">
+        <span class="search-icon">
+          <i class="fa fa-search"></i>
+        </span>
+        <div class="search-input-container">
+          <input autocomplete="off" autocapitalize="off" maxlength="80"
+                placeholder="搜索..." spellcheck="false"
+                type="search" class="search-input">
+        </div>
+        <span class="popup-btn-close" role="button">
+          <i class="fa fa-times-circle"></i>
+        </span>
+      </div>
+      <div class="search-result-container">
+        <div class="search-result-icon">
+          <i class="fa fa-spinner fa-pulse fa-5x"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#OS%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97"><span class="nav-number">1.</span> <span class="nav-text">OS学习日志</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2024-10-21"><span class="nav-number">1.1.</span> <span class="nav-text">2024&#x2F;10&#x2F;21</span></a></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <img class="site-author-image" itemprop="image" alt="wdlin233"
+      src="/images/Mashiro.jpg">
+  <p class="site-author-name" itemprop="name">wdlin233</p>
+  <div class="site-description" itemprop="description">Man's world is mutable, seas become mulberry fields.</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author animated">
+      <span class="links-of-author-item">
+        <a href="https://github.com/wdlin233" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;wdlin233" rel="noopener me" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://wdlin233.github.io/2024/10/21/OS%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/Mashiro.jpg">
+      <meta itemprop="name" content="wdlin233">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="wdlin's Blog">
+      <meta itemprop="description" content="Man's world is mutable, seas become mulberry fields.">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="OS学习日志 | wdlin's Blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          OS学习日志
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+      
+
+      <time title="创建时间：2024-10-21 20:38:17 / 修改时间：20:39:51" itemprop="dateCreated datePublished" datetime="2024-10-21T20:38:17+08:00">2024-10-21</time>
+    </span>
+
+  
+    <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv">
+      <span class="post-meta-item-icon">
+        <i class="far fa-eye"></i>
+      </span>
+      <span class="post-meta-item-text">阅读次数：</span>
+      <span id="busuanzi_value_page_pv"></span>
+    </span>
+    <span class="post-meta-break"></span>
+    <span class="post-meta-item" title="本文字数">
+      <span class="post-meta-item-icon">
+        <i class="far fa-file-word"></i>
+      </span>
+      <span class="post-meta-item-text">本文字数：</span>
+      <span>2.7k</span>
+    </span>
+    <span class="post-meta-item" title="阅读时长">
+      <span class="post-meta-item-icon">
+        <i class="far fa-clock"></i>
+      </span>
+      <span class="post-meta-item-text">阅读时长 &asymp;</span>
+      <span>5 分钟</span>
+    </span>
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h3 id="OS学习日志"><a href="#OS学习日志" class="headerlink" title="OS学习日志"></a>OS学习日志</h3><h4 id="2024-10-21"><a href="#2024-10-21" class="headerlink" title="2024&#x2F;10&#x2F;21"></a>2024&#x2F;10&#x2F;21</h4><p>chap2实现应用程序一部分，在OS启动时执行了<code>clear_bss()</code>函数，关于BSS的功能，参考<a target="_blank" rel="noopener" href="https://blog.csdn.net/sgc_bf/article/details/101227860">静态存储区（Bss、数据段、代码段），堆，栈-CSDN博客</a>.</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="meta">#[link_section = <span class="string">&quot;.text.entry&quot;</span>]</span></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> <span class="keyword">fn</span> <span class="title function_">_start</span>() <span class="punctuation">-&gt;</span> ! &#123;</span><br><span class="line">    <span class="title function_ invoke__">clear_bss</span>();</span><br><span class="line">    <span class="title function_ invoke__">exit</span>(<span class="title function_ invoke__">main</span>());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在<code>lib.rs</code>中定义一个<code>main</code>函数，其具有弱链接特性。在编译过程中，弱符号遇到强符号时，会选择强符号而丢掉弱符号。参考<a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/55768978">嵌入式C语言自我修养 09：链接过程中的强符号和弱符号 - 知乎</a>.</p>
+<span id="more"></span>
+
+<p>故rCore文档中说：</p>
+<blockquote>
+<p>我们使用 Rust 宏将其标志为弱链接。这样在最后链接的时候， 虽然 <code>lib.rs</code> 和 <code>bin</code> 目录下的某个应用程序中都有 <code>main</code> 符号， 但由于 <code>lib.rs</code> 中的 <code>main</code> 符号是弱链接， 链接器会使用 <code>bin</code> 目录下的函数作为 <code>main</code> 。 如果在 <code>bin</code> 目录下找不到任何 <code>main</code> ，那么编译也能通过，但会在运行时报错。</p>
+</blockquote>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#![feature(linkage)]</span>    <span class="comment">// 启用弱链接特性</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#[linkage = <span class="string">&quot;weak&quot;</span>]</span></span><br><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="keyword">fn</span> <span class="title function_">main</span>() <span class="punctuation">-&gt;</span> <span class="type">i32</span> &#123;</span><br><span class="line">    <span class="built_in">panic!</span>(<span class="string">&quot;Cannot find main!&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在系统调用时，我们需要将对应的参数储存在寄存器中，这里我们需要了解RISC-V架构中寄存器的相关知识<a target="_blank" rel="noopener" href="https://blog.csdn.net/weixin_42031299/article/details/132839814">RISV-V架构的寄存器介绍_riscv寄存器-CSDN博客</a>.</p>
+<p>这里使用了Rust的内联汇编宏<code>asm!</code>，参考<a target="_blank" rel="noopener" href="https://doc.rust-lang.org/nightly/reference/inline-assembly.html">Inline assembly - The Rust Reference</a>. 由于Rust 编译器无法判定汇编代码的安全性，所以我们需要将其包裹在 unsafe 块中.</p>
+<p>简而言之，这条汇编代码的执行结果是以寄存器 <code>a0~a2</code> 来保存系统调用的参数，以及寄存器 <code>a7</code> 保存 syscall ID， 返回值通过寄存器 <code>a0</code> 传递给局部变量 <code>ret</code>.</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// user/src/syscall.rs</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">fn</span> <span class="title function_">syscall</span>(id: <span class="type">usize</span>, args: [<span class="type">usize</span>; <span class="number">3</span>]) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123;</span><br><span class="line">   <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">ret</span>: <span class="type">isize</span>;</span><br><span class="line">   <span class="keyword">unsafe</span> &#123;</span><br><span class="line">       core::arch::asm!(</span><br><span class="line">           <span class="string">&quot;ecall&quot;</span>,</span><br><span class="line">           <span class="title function_ invoke__">inlateout</span>(<span class="string">&quot;x10&quot;</span>) args[<span class="number">0</span>] =&gt; ret,</span><br><span class="line">           <span class="title function_ invoke__">in</span>(<span class="string">&quot;x11&quot;</span>) args[<span class="number">1</span>],</span><br><span class="line">           <span class="title function_ invoke__">in</span>(<span class="string">&quot;x12&quot;</span>) args[<span class="number">2</span>],</span><br><span class="line">           <span class="title function_ invoke__">in</span>(<span class="string">&quot;x17&quot;</span>) id</span><br><span class="line">       );</span><br><span class="line">   &#125;</span><br><span class="line">   ret</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p>在 <code>inlateout(&quot;x10&quot;) args[0] =&gt; ret</code>：</p>
+<ul>
+<li><strong>传值</strong>：<code>args[0]</code> 是输入值，它会在调用 <code>ecall</code> 之前被加载到 <code>x10</code> 寄存器。</li>
+<li><strong>返回结果</strong>：执行完 <code>ecall</code> 后，<code>x10</code> 的值变为结果值，并把这个结果存入变量 <code>ret</code>。</li>
+</ul>
+<p>于是我们基于<code>syscall</code>就可以实现一些基本的系统功能：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// user/src/syscall.rs</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> SYSCALL_WRITE: <span class="type">usize</span> = <span class="number">64</span>;</span><br><span class="line"><span class="keyword">const</span> SYSCALL_EXIT: <span class="type">usize</span> = <span class="number">93</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">sys_write</span>(fd: <span class="type">usize</span>, buffer: &amp;[<span class="type">u8</span>]) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123;</span><br><span class="line">    <span class="title function_ invoke__">syscall</span>(SYSCALL_WRITE, [fd, buffer.<span class="title function_ invoke__">as_ptr</span>() <span class="keyword">as</span> <span class="type">usize</span>, buffer.<span class="title function_ invoke__">len</span>()])</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">sys_exit</span>(xstate: <span class="type">i32</span>) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123;</span><br><span class="line">    <span class="title function_ invoke__">syscall</span>(SYSCALL_EXIT, [xstate <span class="keyword">as</span> <span class="type">usize</span>, <span class="number">0</span>, <span class="number">0</span>])</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>封装，有</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// user/src/lib.rs</span></span><br><span class="line"><span class="keyword">use</span> syscall::*;</span><br><span class="line"></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">write</span>(fd: <span class="type">usize</span>, buf: &amp;[<span class="type">u8</span>]) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123; <span class="title function_ invoke__">sys_write</span>(fd, buf) &#125;</span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">exit</span>(exit_code: <span class="type">i32</span>) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123; <span class="title function_ invoke__">sys_exit</span>(exit_code) &#125;</span><br></pre></td></tr></table></figure>
+
+<hr>
+<p>chap2实现批处理操作系统一部分，对<code>link_app.S</code>的汇编代码，可以理解为<code>_num_app</code>这一全局符号指向了一个数组，一个表示应用程序数量，三个表示每个应用程序的开始地址，一个表示最后一个应用程序的结束地址。</p>
+<p>汇编中的常用伪指令：</p>
+<p><strong><code>.section</code></strong>:</p>
+<ul>
+<li>指定接下来的代码或数据属于哪一节（段）。常见的数据段有 <code>.text</code>（代码段）、<code>.data</code>（数据段）、<code>.bss</code>（未初始化数据段）等。</li>
+</ul>
+<p><strong><code>.align</code></strong>:</p>
+<ul>
+<li>用于指定数据的对齐。譬如，<code>.align 3</code> 会将接下来的数据对齐到 2^3&#x3D;8 字节的边界。</li>
+</ul>
+<p><strong><code>.global</code></strong> 或 <strong><code>.globl</code></strong>:</p>
+<ul>
+<li>用于声明符号为全局符号，使其在其他文件中可见。</li>
+</ul>
+<p><strong><code>.quad</code></strong>:</p>
+<ul>
+<li>用于分配并初始化一个 64-bit（8字节）数据。类似的指令有 <code>.byte</code>、<code>.word</code>、<code>.long</code> 等，用于分配其他大小的数据。</li>
+</ul>
+<p><strong><code>.incbin</code></strong>:</p>
+<ul>
+<li>包含一个外部二进制文件的内容，并将其嵌入到当前字节流中。这在需要将预编译的二进制文件直接打包到程序中的情况下非常有用。</li>
+</ul>
+<p>在初始化<code>AppManager</code>的代码中，<code>UPSafeCell</code>获取内部对象的可变引用，拥有内部可变性。<code>lazy_static!</code> 宏提供了全局变量的运行时初始化功能。对于有些全局变量，其初始化依赖于运行期间才能得到的数据。 此处声明了一个 <code>AppManager</code> 结构的名为 <code>APP_MANAGER</code> 的全局实例， 只有在它第一次被使用到的时候才会进行实际的初始化工作。</p>
+<p>CPU的L1 Cache分为数据缓存(d-cache)和指令缓存(i-cache)，二者的大概介绍[CPU一级缓存L1 D-cache\L1 I-cache与二级缓存L2 cache深度分析_l1cache与l2cache-CSDN博客](<a target="_blank" rel="noopener" href="https://blog.csdn.net/chenhuanqiangnihao/article/details/128312905#:~:text=%E9%80%9A%E5%B8%B8%E4%B8%80%E7%BA%A7%E7%BC%93%E5%AD%98%E4%B8%AD%E8%BF%98%E5%88%86%E6%95%B0%E6%8D%AE%E7%BC%93%E5%AD%98%EF%BC%88Data">https://blog.csdn.net/chenhuanqiangnihao/article/details/128312905#:~:text=通常一级缓存中还分数据缓存（Data</a> Cache，D-Cache）和指令缓存（Instruc ti on Cache，I-Cache）。,二者分别用来 存放数据 和执行这些数据的 指令，而且 两者可以同时被CPU访问，减少了争用Cache所造成的冲突，提高了CPU效能。). 代码中我们使用汇编指令 <code>fence.i</code> 清理 i-cache.</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/OS/" rel="tag"># OS</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2024/10/20/Rust%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97-Rustlings/" rel="prev" title="Rust学习日志-Rustlings">
+                  <i class="fa fa-angle-left"></i> Rust学习日志-Rustlings
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2024</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">wdlin233</span>
+  </div>
+<div class="wordcount">
+  <span class="post-meta-item">
+    <span class="post-meta-item-icon">
+      <i class="fa fa-chart-line"></i>
+    </span>
+    <span title="站点总字数">18k</span>
+  </span>
+  <span class="post-meta-item">
+    <span class="post-meta-item-icon">
+      <i class="fa fa-coffee"></i>
+    </span>
+    <span title="站点阅读时长">33 分钟</span>
+  </span>
+</div>
+<div class="busuanzi-count">
+    <span class="post-meta-item" id="busuanzi_container_site_uv">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/" rel="noopener" target="_blank">NexT.Gemini</a> 强力驱动
+  </div>
+
+
+
+
+<span id="sitetime"></span>
+<script language=javascript>
+	function siteTime(){
+		window.setTimeout("siteTime()", 1000);
+		var seconds = 1000;
+		var minutes = seconds * 60;
+		var hours = minutes * 60;
+		var days = hours * 24;
+		var years = days * 365;
+		var today = new Date();
+		var todayYear = today.getFullYear();
+		var todayMonth = today.getMonth()+1;
+		var todayDate = today.getDate();
+		var todayHour = today.getHours();
+		var todayMinute = today.getMinutes();
+		var todaySecond = today.getSeconds();
+		/* 
+		Date.UTC() -- 返回date对象距世界标准时间(UTC)1970年1月1日午夜之间的毫秒数(时间戳)
+		year - 作为date对象的年份，为4位年份值
+		month - 0-11之间的整数，做为date对象的月份
+		day - 1-31之间的整数，做为date对象的天数
+		hours - 0(午夜24点)-23之间的整数，做为date对象的小时数
+		minutes - 0-59之间的整数，做为date对象的分钟数
+		seconds - 0-59之间的整数，做为date对象的秒数
+		microseconds - 0-999之间的整数，做为date对象的毫秒数
+        */
+		var t1 = Date.UTC(2024,10,20,00,00,00); //北京时间2021-8-11 00:00:00
+		var t2 = Date.UTC(todayYear,todayMonth,todayDate,todayHour,todayMinute,todaySecond);
+		var diff = t2-t1;
+		var diffYears = Math.floor(diff/years);
+		var diffDays = Math.floor((diff/days)-diffYears*365);
+		var diffHours = Math.floor((diff-(diffYears*365+diffDays)*days)/hours);
+		var diffMinutes = Math.floor((diff-(diffYears*365+diffDays)*days-diffHours*hours)/minutes);
+		var diffSeconds = Math.floor((diff-(diffYears*365+diffDays)*days-diffHours*hours-diffMinutes*minutes)/seconds);
+		document.getElementById("sitetime").innerHTML=" 本站已悄悄运行"+/*diffYears+" 年 "+*/diffDays+" 天 "+diffHours+" 小时 "+diffMinutes+" 分钟 "+diffSeconds+" 秒";
+	}
+	siteTime();
+</script>
+
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/sidebar.js"></script><script src="/js/next-boot.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hexo-generator-searchdb/1.4.1/search.js" integrity="sha256-1kfA5uHPf65M5cphT2dvymhkuyHPQp5A53EGZOnOLmc=" crossorigin="anonymous"></script>
+<script src="/js/third-party/search/local-search.js"></script>
+
+
+
+
+
+
+
+  
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+
+
+
+
+</body>
+</html>
