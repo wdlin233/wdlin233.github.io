@@ -223,7 +223,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2024-11-27 22:22:56" itemprop="dateModified" datetime="2024-11-27T22:22:56+08:00">2024-11-27</time>
+      <time title="修改时间：2024-11-28 11:31:00" itemprop="dateModified" datetime="2024-11-28T11:31:00+08:00">2024-11-28</time>
     </span>
 
   
@@ -233,14 +233,14 @@
         <i class="far fa-file-word"></i>
       </span>
       <span class="post-meta-item-text">本文字数：</span>
-      <span>15k</span>
+      <span>17k</span>
     </span>
     <span class="post-meta-item" title="阅读时长">
       <span class="post-meta-item-icon">
         <i class="far fa-clock"></i>
       </span>
       <span class="post-meta-item-text">阅读时长 &asymp;</span>
-      <span>27 分钟</span>
+      <span>32 分钟</span>
     </span>
 </div>
 
@@ -369,6 +369,30 @@
 <img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/app-as-full.png" alt="应用地址空间" style="zoom:67%;" />
 
 <p>左侧给出了应用地址空间最低 256GiB 的布局：从 0x0 开始向高地址放置应用内存布局中的各个逻辑段，最后放置带有一个保护页面的用户栈。这些逻辑段都是以 <code>Framed</code> 方式映射到物理内存的。<code>U</code>表示可以在用户特权级时执行访问。右侧则给出了最高的 256GiB ， 它和内核地址空间一样将跳板放置在最高页，还将 Trap 上下文放置在次高页中。</p>
+<p>在 <code>os/src/build.rs</code> 中，我们不再将丢弃了所有符号的应用二进制镜像链接进内核，而是直接使用 ELF 格式的可执行文件， 因为在前者中内存布局中各个逻辑段的位置和访问限制等信息都被裁剪掉了。而 <code>loader</code> 子模块也变得极其精简。</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// os/src/loader.rs</span></span><br><span class="line"><span class="comment">/// Get the total number of applications.</span></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">get_num_app</span>() <span class="punctuation">-&gt;</span> <span class="type">usize</span> &#123;</span><br><span class="line">    <span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> &#123;</span><br><span class="line">        <span class="keyword">fn</span> <span class="title function_">_num_app</span>();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">unsafe</span> &#123; (_num_app <span class="keyword">as</span> <span class="type">usize</span> <span class="keyword">as</span> *<span class="keyword">const</span> <span class="type">usize</span>).<span class="title function_ invoke__">read_volatile</span>() &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/// get applications data</span></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">get_app_data</span>(app_id: <span class="type">usize</span>) <span class="punctuation">-&gt;</span> &amp;<span class="symbol">&#x27;static</span> [<span class="type">u8</span>] &#123;</span><br><span class="line">    <span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> &#123;</span><br><span class="line">        <span class="keyword">fn</span> <span class="title function_">_num_app</span>();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">let</span> <span class="variable">num_app_ptr</span> = _num_app <span class="keyword">as</span> <span class="type">usize</span> <span class="keyword">as</span> *<span class="keyword">const</span> <span class="type">usize</span>;</span><br><span class="line">    <span class="keyword">let</span> <span class="variable">num_app</span> = <span class="title function_ invoke__">get_num_app</span>();</span><br><span class="line">    <span class="keyword">let</span> <span class="variable">app_start</span> = <span class="keyword">unsafe</span> &#123; core::slice::<span class="title function_ invoke__">from_raw_parts</span>(num_app_ptr.<span class="title function_ invoke__">add</span>(<span class="number">1</span>), num_app + <span class="number">1</span>) &#125;;</span><br><span class="line">    <span class="built_in">assert!</span>(app_id &lt; num_app);</span><br><span class="line">    <span class="keyword">unsafe</span> &#123;</span><br><span class="line">        core::slice::<span class="title function_ invoke__">from_raw_parts</span>(</span><br><span class="line">            app_start[app_id] <span class="keyword">as</span> *<span class="keyword">const</span> <span class="type">u8</span>,</span><br><span class="line">            app_start[app_id + <span class="number">1</span>] - app_start[app_id],</span><br><span class="line">        )</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>此处原文档对<code>from_elf()</code>进行了讲解，待补充…</p>
+</blockquote>
+<h4 id="地址空间的分时多任务"><a href="#地址空间的分时多任务" class="headerlink" title="地址空间的分时多任务"></a>地址空间的分时多任务</h4><p>SBI初始化完成后，CPU将跳转到内核入口点并在S特权级上运行，此时还未开启分页模式。在内核初始化期间，将过渡到分页模式。</p>
+<p>我们先创建内核地址空间的全局实例，这里使用经典的 <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> 组合是因为我们既需要 <code>Arc&lt;T&gt;</code> 提供的共享引用，也需要 <code>Mutex&lt;T&gt;</code> 提供的互斥访问：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// os/src/memory_set.rs</span></span><br><span class="line">lazy_static! &#123;</span><br><span class="line">    <span class="comment">/// The kernel&#x27;s initial memory mapping(kernel address space)</span></span><br><span class="line">    <span class="keyword">pub</span> <span class="keyword">static</span> <span class="keyword">ref</span> KERNEL_SPACE: Arc&lt;UPSafeCell&lt;MemorySet&gt;&gt; =</span><br><span class="line">        Arc::<span class="title function_ invoke__">new</span>(<span class="keyword">unsafe</span> &#123; UPSafeCell::<span class="title function_ invoke__">new</span>(MemorySet::<span class="title function_ invoke__">new_kernel</span>()) &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在 <code>rust_main</code> 函数中，我们首先调用 <code>mm::init</code> 进行内存管理子系统的初始化：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// os/src/mm/mod.rs</span></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">use</span> memory_set::KERNEL_SPACE;</span><br><span class="line"><span class="comment">/// initiate heap allocator, frame allocator and kernel space</span></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">init</span>() &#123;</span><br><span class="line">    heap_allocator::<span class="title function_ invoke__">init_heap</span>();</span><br><span class="line">    frame_allocator::<span class="title function_ invoke__">init_frame_allocator</span>();</span><br><span class="line">    KERNEL_SPACE.<span class="title function_ invoke__">exclusive_access</span>().<span class="title function_ invoke__">activate</span>();</span><br><span class="line">    <span class="comment">// v3: KERNEL_SPACE.lock().activate();</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们最先进行全局动态内存分配器的初始化，接着初始化物理页帧管理器（内含堆数据结构 <code>Vec&lt;T&gt;</code> ）使能可用物理页帧的分配和回收能力。最后创建内核地址空间并让 CPU 开启分页模式， MMU 在地址转换时将使用内核的多级页表。</p>
+<p>我们分析内核地址空间创建这一句。首先引用 <code>KERNEL_SPACE</code> ，由于是第一次被使用，此时它会被初始化，调用 <code>MemorySet::new_kernel</code> 创建一个内核地址空间并使用 <code>Arc&lt;UPSafeCell&lt;T&gt;&gt;</code> 包裹起来；</p>
+<blockquote>
+<p>在 rcore-v3 文档中，内核地址空间被<code>Arc&lt;Mutex&lt;T&gt;&gt;</code>包裹，初始化时调用<code>KERNEL_SPACE.lock().activate()</code>.</p>
+</blockquote>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">impl</span> <span class="title class_">PageTable</span>&#123;</span><br><span class="line">    <span class="comment">/// get the token from the page table</span></span><br><span class="line">	<span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">token</span>(&amp;<span class="keyword">self</span>) <span class="punctuation">-&gt;</span> <span class="type">usize</span> &#123;</span><br><span class="line">        <span class="number">8usize</span> &lt;&lt; <span class="number">60</span> | <span class="keyword">self</span>.root_ppn.<span class="number">0</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>根据<a target="_blank" rel="noopener" href="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/chapter4/3sv39-implementation-1.html#satp-layout">实现 SV39 多级页表机制（上） — rCore-Tutorial-Book-v3 0.1 文档</a>，当<code>satp</code>的<code>MODE</code>字段设置为8时，SV39分页机制被启用。<code>PageTable::token</code>用于构造<code>satp</code>开启分页模式，并填充多级页表根节点所在的物理页号。</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">impl</span> <span class="title class_">MemorySet</span>&#123;</span><br><span class="line">	<span class="comment">/// Change page table by writing satp CSR Register.</span></span><br><span class="line">    <span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">activate</span>(&amp;<span class="keyword">self</span>) &#123;</span><br><span class="line">        <span class="keyword">let</span> <span class="variable">satp</span> = <span class="keyword">self</span>.page_table.<span class="title function_ invoke__">token</span>();</span><br><span class="line">        <span class="keyword">unsafe</span> &#123;</span><br><span class="line">            satp::<span class="title function_ invoke__">write</span>(satp);</span><br><span class="line">            asm!(<span class="string">&quot;sfence.vma&quot;</span>);</span><br><span class="line">            <span class="comment">// v3: llvm_asm!(&quot;sfence.vma&quot; :::: &quot;volatile&quot;);</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>activate</code>将得到的<code>token</code>作为<code>satp</code>写入。注意，切换satp的指令附近的映射必须连续性，切换 satp 的指令及其下一条指令这两条相邻的指令的虚拟地址是相邻的。此处，这条写入 satp 的指令及其下一条指令都在内核内存布局的代码段中，在切换之后是一个恒等映射， 而在切换之前是视为物理地址直接取指，也可以将其看成一个恒等映射。这完全符合我们的期待：即使切换了地址空间，指令仍应该能够被<strong>连续</strong>的执行。</p>
 
       
     </div>
@@ -698,13 +722,13 @@
     <span class="post-meta-item-icon">
       <i class="fa fa-chart-line"></i>
     </span>
-    <span title="站点总字数">40k</span>
+    <span title="站点总字数">42k</span>
   </span>
   <span class="post-meta-item">
     <span class="post-meta-item-icon">
       <i class="fa fa-coffee"></i>
     </span>
-    <span title="站点阅读时长">1:12</span>
+    <span title="站点阅读时长">1:17</span>
   </span>
 </div>
 <div class="busuanzi-count">
