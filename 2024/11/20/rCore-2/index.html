@@ -19,12 +19,12 @@
 
 <script class="next-config" data-name="main" type="application/json">{"hostname":"wdlin233.github.io","root":"/","images":"/images","scheme":"Gemini","darkmode":false,"version":"8.21.0","exturl":false,"sidebar":{"position":"left","width_expanded":320,"width_dual_column":240,"display":"post","padding":18,"offset":12},"hljswrap":true,"copycode":{"enable":false,"style":null},"fold":{"enable":false,"height":500},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"},"path":"/search.xml","localsearch":{"enable":true,"top_n_per_article":1,"unescape":false,"preload":false}}</script><script src="/js/config.js"></script>
 
-    <meta name="description" content="ch4 地址空间这个视频作了一个不错的概述: 【操作系统】内存管理——地址空间. 用satpCSR的MODE字段来开启MMU.   物理地址&#x2F;虚拟地址&#x2F;物理页面&#x2F;物理页帧单个页面的大小设置为 4KiB(PAGE_SIZE) ，每个虚拟页面和物理页帧都按 4 KB 对齐。 4KiB 需要用 12 位字节地址来表示，构成低 12 位即 页内偏移 (Page Offset)">
+    <meta name="description" content="ch4 分页机制与地址空间这个视频作了一个不错的概述: 【操作系统】内存管理——地址空间. 用satpCSR的MODE字段来开启MMU.   物理地址&#x2F;虚拟地址&#x2F;物理页面&#x2F;物理页帧单个页面的大小设置为 4KiB(PAGE_SIZE) ，每个虚拟页面和物理页帧都按 4 KB 对齐。 4KiB 需要用 12 位字节地址来表示，构成低 12 位即 页内偏移 (Page Of">
 <meta property="og:type" content="article">
 <meta property="og:title" content="rCore-2">
 <meta property="og:url" content="https://wdlin233.github.io/2024/11/20/rCore-2/index.html">
 <meta property="og:site_name" content="wdlin&#39;s Blog">
-<meta property="og:description" content="ch4 地址空间这个视频作了一个不错的概述: 【操作系统】内存管理——地址空间. 用satpCSR的MODE字段来开启MMU.   物理地址&#x2F;虚拟地址&#x2F;物理页面&#x2F;物理页帧单个页面的大小设置为 4KiB(PAGE_SIZE) ，每个虚拟页面和物理页帧都按 4 KB 对齐。 4KiB 需要用 12 位字节地址来表示，构成低 12 位即 页内偏移 (Page Offset)">
+<meta property="og:description" content="ch4 分页机制与地址空间这个视频作了一个不错的概述: 【操作系统】内存管理——地址空间. 用satpCSR的MODE字段来开启MMU.   物理地址&#x2F;虚拟地址&#x2F;物理页面&#x2F;物理页帧单个页面的大小设置为 4KiB(PAGE_SIZE) ，每个虚拟页面和物理页帧都按 4 KB 对齐。 4KiB 需要用 12 位字节地址来表示，构成低 12 位即 页内偏移 (Page Of">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="https://learningos.cn/rCore-Camp-Guide-2024A/_images/satp.png">
 <meta property="og:image" content="https://learningos.cn/rCore-Camp-Guide-2024A/_images/sv39-va-pa.png">
@@ -33,7 +33,7 @@
 <meta property="og:image" content="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/kernel-as-low.png">
 <meta property="og:image" content="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/app-as-full.png">
 <meta property="article:published_time" content="2024-11-20T13:48:17.000Z">
-<meta property="article:modified_time" content="2024-11-28T03:31:00.878Z">
+<meta property="article:modified_time" content="2024-11-28T08:24:39.489Z">
 <meta property="article:author" content="wdlin233">
 <meta property="article:tag" content="OS">
 <meta name="twitter:card" content="summary">
@@ -147,7 +147,7 @@
       <div class="sidebar-panel-container">
         <!--noindex-->
         <div class="post-toc-wrap sidebar-panel">
-            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#ch4-%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.</span> <span class="nav-text">ch4 地址空间</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%89%A9%E7%90%86%E5%9C%B0%E5%9D%80-%E8%99%9A%E6%8B%9F%E5%9C%B0%E5%9D%80-%E7%89%A9%E7%90%86%E9%A1%B5%E9%9D%A2-%E7%89%A9%E7%90%86%E9%A1%B5%E5%B8%A7"><span class="nav-number">1.1.</span> <span class="nav-text">物理地址&#x2F;虚拟地址&#x2F;物理页面&#x2F;物理页帧</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%A1%B5%E8%A1%A8%E9%A1%B9PTE"><span class="nav-number">1.2.</span> <span class="nav-text">页表项PTE</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%89%A9%E7%90%86%E9%A1%B5%E5%B8%A7%E4%B8%8EFrameAllocator"><span class="nav-number">1.3.</span> <span class="nav-text">物理页帧与FrameAllocator</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%9A%E5%B1%82%E9%A1%B5%E8%A1%A8"><span class="nav-number">1.4.</span> <span class="nav-text">多层页表</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%99%9A%E5%AE%9E%E5%9C%B0%E5%9D%80%E6%98%A0%E5%B0%84"><span class="nav-number">1.5.</span> <span class="nav-text">虚实地址映射</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%80%BB%E8%BE%91%E6%AE%B5%E4%B8%8E%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.6.</span> <span class="nav-text">逻辑段与地址空间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%86%85%E6%A0%B8%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.7.</span> <span class="nav-text">内核地址空间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%BA%94%E7%94%A8%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.8.</span> <span class="nav-text">应用地址空间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4%E7%9A%84%E5%88%86%E6%97%B6%E5%A4%9A%E4%BB%BB%E5%8A%A1"><span class="nav-number">1.9.</span> <span class="nav-text">地址空间的分时多任务</span></a></li></ol></li></ol></div>
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#ch4-%E5%88%86%E9%A1%B5%E6%9C%BA%E5%88%B6%E4%B8%8E%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.</span> <span class="nav-text">ch4 分页机制与地址空间</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%89%A9%E7%90%86%E5%9C%B0%E5%9D%80-%E8%99%9A%E6%8B%9F%E5%9C%B0%E5%9D%80-%E7%89%A9%E7%90%86%E9%A1%B5%E9%9D%A2-%E7%89%A9%E7%90%86%E9%A1%B5%E5%B8%A7"><span class="nav-number">1.1.</span> <span class="nav-text">物理地址&#x2F;虚拟地址&#x2F;物理页面&#x2F;物理页帧</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%A1%B5%E8%A1%A8%E9%A1%B9PTE"><span class="nav-number">1.2.</span> <span class="nav-text">页表项PTE</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%89%A9%E7%90%86%E9%A1%B5%E5%B8%A7%E4%B8%8EFrameAllocator"><span class="nav-number">1.3.</span> <span class="nav-text">物理页帧与FrameAllocator</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%9A%E5%B1%82%E9%A1%B5%E8%A1%A8"><span class="nav-number">1.4.</span> <span class="nav-text">多层页表</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%99%9A%E5%AE%9E%E5%9C%B0%E5%9D%80%E6%98%A0%E5%B0%84"><span class="nav-number">1.5.</span> <span class="nav-text">虚实地址映射</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%80%BB%E8%BE%91%E6%AE%B5%E4%B8%8E%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.6.</span> <span class="nav-text">逻辑段与地址空间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%86%85%E6%A0%B8%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.7.</span> <span class="nav-text">内核地址空间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%BA%94%E7%94%A8%E5%9C%B0%E5%9D%80%E7%A9%BA%E9%97%B4"><span class="nav-number">1.8.</span> <span class="nav-text">应用地址空间</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%86%85%E6%A0%B8%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-number">1.9.</span> <span class="nav-text">内核初始化</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%B7%B3%E6%9D%BFTrampoline"><span class="nav-number">1.10.</span> <span class="nav-text">跳板Trampoline</span></a></li></ol></li></ol></div>
         </div>
         <!--/noindex-->
 
@@ -235,7 +235,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2024-11-28 11:31:00" itemprop="dateModified" datetime="2024-11-28T11:31:00+08:00">2024-11-28</time>
+      <time title="修改时间：2024-11-28 16:24:39" itemprop="dateModified" datetime="2024-11-28T16:24:39+08:00">2024-11-28</time>
     </span>
 
   
@@ -252,7 +252,7 @@
         <i class="far fa-file-word"></i>
       </span>
       <span class="post-meta-item-text">本文字数：</span>
-      <span>17k</span>
+      <span>18k</span>
     </span>
     <span class="post-meta-item" title="阅读时长">
       <span class="post-meta-item-icon">
@@ -269,7 +269,7 @@
     
     
     
-    <div class="post-body" itemprop="articleBody"><h3 id="ch4-地址空间"><a href="#ch4-地址空间" class="headerlink" title="ch4 地址空间"></a>ch4 地址空间</h3><p>这个视频作了一个不错的概述: <a target="_blank" rel="noopener" href="https://www.bilibili.com/video/BV1oi4y1T7RP/?share_source=copy_web&vd_source=7065d846d368bb90906c142c279a2832">【操作系统】内存管理——地址空间</a>.</p>
+    <div class="post-body" itemprop="articleBody"><h3 id="ch4-分页机制与地址空间"><a href="#ch4-分页机制与地址空间" class="headerlink" title="ch4 分页机制与地址空间"></a>ch4 分页机制与地址空间</h3><p>这个视频作了一个不错的概述: <a target="_blank" rel="noopener" href="https://www.bilibili.com/video/BV1oi4y1T7RP/?share_source=copy_web&vd_source=7065d846d368bb90906c142c279a2832">【操作系统】内存管理——地址空间</a>.</p>
 <p>用<code>satp</code>CSR的MODE字段来开启MMU.</p>
 <img src="https://learningos.cn/rCore-Camp-Guide-2024A/_images/satp.png" alt="satp CSR" style="zoom:67%;" />
 
@@ -393,7 +393,7 @@
 <blockquote>
 <p>此处原文档对<code>from_elf()</code>进行了讲解，待补充…</p>
 </blockquote>
-<h4 id="地址空间的分时多任务"><a href="#地址空间的分时多任务" class="headerlink" title="地址空间的分时多任务"></a>地址空间的分时多任务</h4><p>SBI初始化完成后，CPU将跳转到内核入口点并在S特权级上运行，此时还未开启分页模式。在内核初始化期间，将过渡到分页模式。</p>
+<h4 id="内核初始化"><a href="#内核初始化" class="headerlink" title="内核初始化"></a>内核初始化</h4><p>SBI初始化完成后，CPU将跳转到内核入口点并在S特权级上运行，此时还未开启分页模式。在内核初始化期间，将过渡到分页模式。</p>
 <p>我们先创建内核地址空间的全局实例，这里使用经典的 <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> 组合是因为我们既需要 <code>Arc&lt;T&gt;</code> 提供的共享引用，也需要 <code>Mutex&lt;T&gt;</code> 提供的互斥访问：</p>
 <figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// os/src/memory_set.rs</span></span><br><span class="line">lazy_static! &#123;</span><br><span class="line">    <span class="comment">/// The kernel&#x27;s initial memory mapping(kernel address space)</span></span><br><span class="line">    <span class="keyword">pub</span> <span class="keyword">static</span> <span class="keyword">ref</span> KERNEL_SPACE: Arc&lt;UPSafeCell&lt;MemorySet&gt;&gt; =</span><br><span class="line">        Arc::<span class="title function_ invoke__">new</span>(<span class="keyword">unsafe</span> &#123; UPSafeCell::<span class="title function_ invoke__">new</span>(MemorySet::<span class="title function_ invoke__">new_kernel</span>()) &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
@@ -410,7 +410,29 @@
 <p>根据<a target="_blank" rel="noopener" href="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/chapter4/3sv39-implementation-1.html#satp-layout">实现 SV39 多级页表机制（上） — rCore-Tutorial-Book-v3 0.1 文档</a>，当<code>satp</code>的<code>MODE</code>字段设置为8时，SV39分页机制被启用。<code>PageTable::token</code>用于构造<code>satp</code>开启分页模式，并填充多级页表根节点所在的物理页号。</p>
 <figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">impl</span> <span class="title class_">MemorySet</span>&#123;</span><br><span class="line">	<span class="comment">/// Change page table by writing satp CSR Register.</span></span><br><span class="line">    <span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">activate</span>(&amp;<span class="keyword">self</span>) &#123;</span><br><span class="line">        <span class="keyword">let</span> <span class="variable">satp</span> = <span class="keyword">self</span>.page_table.<span class="title function_ invoke__">token</span>();</span><br><span class="line">        <span class="keyword">unsafe</span> &#123;</span><br><span class="line">            satp::<span class="title function_ invoke__">write</span>(satp);</span><br><span class="line">            asm!(<span class="string">&quot;sfence.vma&quot;</span>);</span><br><span class="line">            <span class="comment">// v3: llvm_asm!(&quot;sfence.vma&quot; :::: &quot;volatile&quot;);</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
-<p><code>activate</code>将得到的<code>token</code>作为<code>satp</code>写入。注意，切换satp的指令附近的映射必须连续性，切换 satp 的指令及其下一条指令这两条相邻的指令的虚拟地址是相邻的。此处，这条写入 satp 的指令及其下一条指令都在内核内存布局的代码段中，在切换之后是一个恒等映射， 而在切换之前是视为物理地址直接取指，也可以将其看成一个恒等映射。这完全符合我们的期待：即使切换了地址空间，指令仍应该能够被<strong>连续</strong>的执行。</p>
+<p><code>activate</code>将得到的<code>token</code>作为<code>satp</code>写入。<code>sfence.vma</code>包含清空快表TLB的操作。</p>
+<p>注意，切换satp的指令附近的映射必须连续性，切换 satp 的指令及其下一条指令这两条相邻的指令的虚拟地址是相邻的。此处，这条写入 satp 的指令及其下一条指令都在内核内存布局的代码段中，在切换之后是一个恒等映射， 而在切换之前是视为物理地址直接取指，也可以将其看成一个恒等映射。这完全符合我们的期待：即使切换了地址空间，指令仍应该能够被<strong>连续</strong>的执行。</p>
+<p>此外，我们可用<code>mm::remap_test</code>函数检查<code>mm:init</code>之后内核地址空间的多级页表是否被正确设置，分别通过手动查内核多级页表的方式验证代码段和只读数据段不允许被写入，同时不允许从数据段上取指。</p>
+<h4 id="跳板Trampoline"><a href="#跳板Trampoline" class="headerlink" title="跳板Trampoline"></a>跳板Trampoline</h4><p>在启用分页机制后，对于Trap处理时我们需要修改satp以完成应用&#x2F;内核地址空间的切换。地址空间的切换不能影响指令的连续执行，即要求应用和内核地址空间在切换地址空间指令附近是平滑的。</p>
+<blockquote>
+<p>Q：为什么将 Trap 上下文放到应用地址空间的次高页面而不是内核地址空间中的内核栈中呢？</p>
+<p>A：为了在内核栈中保存上下文，需要以下步骤：</p>
+<ul>
+<li>切换到内核地址空间<ul>
+<li>将内核地址空间的 token 写入 <code>satp</code> 寄存器（切换页表）。</li>
+</ul>
+</li>
+<li>定位内核栈顶<ul>
+<li>需要一个通用寄存器保存内核栈的栈顶指针。</li>
+</ul>
+</li>
+</ul>
+<p>但硬件只提供了一个 <code>sscratch</code> 寄存器作为临时寄存器，无法同时保存两个信息。这会导致寄存器冲突。因此，我们在应用地址空间的次高页面预留一个虚拟页面，专门用于保存 Trap 上下文。当 Trap 发生时：</p>
+<ul>
+<li>硬件直接使用当前地址空间（即应用的页表）定位上下文保存位置。</li>
+<li>无需切换到内核地址空间，也无需额外的寄存器来保存内核栈信息。</li>
+</ul>
+</blockquote>
 
     </div>
 
@@ -462,13 +484,13 @@
     <span class="post-meta-item-icon">
       <i class="fa fa-chart-line"></i>
     </span>
-    <span title="站点总字数">42k</span>
+    <span title="站点总字数">43k</span>
   </span>
   <span class="post-meta-item">
     <span class="post-meta-item-icon">
       <i class="fa fa-coffee"></i>
     </span>
-    <span title="站点阅读时长">1:17</span>
+    <span title="站点阅读时长">1:18</span>
   </span>
 </div>
 <div class="busuanzi-count">
