@@ -1,20 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <search>
   <entry>
-    <title>Hello World</title>
-    <url>/2024/10/20/hello-world/</url>
-    <content><![CDATA[<h2 id="第一部分-论神"><a href="#第一部分-论神" class="headerlink" title="第一部分 论神"></a>第一部分 论神</h2><h3 id="界说"><a href="#界说" class="headerlink" title="界说"></a>界说</h3><p>(一) 自因(causa sui)，我理解为这样的东西，它的本质(essentia)即包含存在(existentia)，或者它的本性只能设想为存在着。</p>
-<p>(二) 凡是可以为同性质的另一事物所限制的东西，就叫做自类有限(insuo genere finita)。例如一个物体被称为有限，就是因为除了这个物体之外，我们常常可以设想另一个更大的物体。同样，一个思想可以为另一个思想所限制。但是物体不能限制思想，思想也不能限制物体。</p>
-<p>(三) 实体(substantia)，我理解为在自身内并通过自身而被认识的东西。换言之，形成实体的概念，可以无须借助于他物的概念。</p>
-<p>(四) 属性(attributus)，我理解为由知性(intellectus)看来是构成实体的 本质的东西。</p>
-<p>(五) 样式(modus)，我理解为实体的分殊(affectiones)，亦即在他物内(inalio est)通过他物而被认知的东西(per alium concipitur)。</p>
-<p>(六) 神(Deus)，我理解为绝对无限的存在，亦即具有无限“多”属性的实体，其中每一属性各表示永恒无限的本质。说明 我说神是绝对无限而不说它是自类无限(in suo genereinfinita)，因为仅仅是自类无限的东西，我们可以否认其无限多的属性；而绝对无限者的本性中就具备了一切足以表示本质的东西，却并不包含否定。</p>
-<p>(七) 凡是仅仅由自身本性的必然性而存在、其行为仅仅由它自身决定的东西叫做自由(libera)。反之，凡一物的存在及其行为均按一定的方式为他物所决定，便叫做必然(necessaria，)或受制(coata)。</p>
-<p>(八) 永恒(aeternitas)，我理解为存在的自身，就存在被理解为只能从永恒事物的界说中必然推出而言。</p>
-<p><strong>说明</strong> 因为这样的存在也可以设想为永恒的真理，有如事物的本质，因此不可以用绵延或时间去解释它，虽说绵延可以设想为无始无终。</p>
-]]></content>
-  </entry>
-  <entry>
     <title>rCore-1</title>
     <url>/2024/10/21/OS%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97/</url>
     <content><![CDATA[<blockquote>
@@ -26,44 +12,68 @@
 <p>但是</p>
 <figure class="highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">qemu-riscv64 target/riscv64gc-unknown-none-elf/debug/os</span></span><br><span class="line">  段错误 (核心已转储)</span><br></pre></td></tr></table></figure>
 
-<p>QEMU有两种运行模式，</p>
+<span id="more"></span>
+
+<p>出错了，这是因为目前的执行环境还缺了一个退出机制。实现如下. 在<a href="#syscall">第二章</a>会详细讲解.</p>
+<figure class="highlight rust"><table><tr><td class="code"><pre><span class="line"><span class="comment">// os/src/main.rs</span></span><br><span class="line"><span class="meta">#![feature(llvm_asm)]</span></span><br><span class="line"><span class="keyword">const</span> SYSCALL_EXIT: <span class="type">usize</span> = <span class="number">93</span>;</span><br><span class="line"><span class="keyword">fn</span> <span class="title function_">syscall</span>(id: <span class="type">usize</span>, args: [<span class="type">usize</span>; <span class="number">3</span>]) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">ret</span>: <span class="type">isize</span>;</span><br><span class="line">    <span class="keyword">unsafe</span> &#123;</span><br><span class="line">        llvm_asm!(<span class="string">&quot;ecall&quot;</span></span><br><span class="line">            : <span class="string">&quot;=&#123;x10&#125;&quot;</span> (ret)</span><br><span class="line">            : <span class="string">&quot;&#123;x10&#125;&quot;</span> (args[<span class="number">0</span>]), <span class="string">&quot;&#123;x11&#125;&quot;</span> (args[<span class="number">1</span>]), <span class="string">&quot;&#123;x12&#125;&quot;</span> (args[<span class="number">2</span>]), <span class="string">&quot;&#123;x17&#125;&quot;</span> (id)</span><br><span class="line">            : <span class="string">&quot;memory&quot;</span></span><br><span class="line">            : <span class="string">&quot;volatile&quot;</span></span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line">    ret</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">sys_exit</span>(xstate: <span class="type">i32</span>) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123;</span><br><span class="line">    <span class="title function_ invoke__">syscall</span>(SYSCALL_EXIT, [xstate <span class="keyword">as</span> <span class="type">usize</span>, <span class="number">0</span>, <span class="number">0</span>])</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> <span class="keyword">fn</span> <span class="title function_">_start</span>() &#123;</span><br><span class="line">    <span class="title function_ invoke__">sys_exit</span>(<span class="number">9</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>即可使用.</p>
+<figure class="highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">cargo build --target riscv64gc-unknown-none-elf</span></span><br><span class="line">  Compiling os v0.1.0 (/media/chyyuu/ca8c7ba6-51b7-41fc-8430-e29e31e5328f/thecode/rust/os_kernel_lab/os)</span><br><span class="line">    Finished dev [unoptimized + debuginfo] target(s) in 0.26s</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_">[$</span><span class="language-bash">?表示执行程序的退出码，它会被告知 OS]</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">qemu-riscv64 target/riscv64gc-unknown-none-elf/debug/os; <span class="built_in">echo</span> $?</span></span><br><span class="line">9</span><br></pre></td></tr></table></figure>
+
+<p>我们也可通过格式化宏与<code>sys_write</code>实现<code>println!</code>.</p>
 <h4 id="裸机启动过程与关机"><a href="#裸机启动过程与关机" class="headerlink" title="裸机启动过程与关机"></a>裸机启动过程与关机</h4><p>我们通过QEMU模拟CPU加电的执行过程：</p>
 <figure class="highlight makefile"><table><tr><td class="code"><pre><span class="line"><span class="comment"># os/Makefile</span></span><br><span class="line"><span class="section">run-inner: build</span></span><br><span class="line">	@qemu-system-riscv64 \</span><br><span class="line">		-machine virt \</span><br><span class="line">		-nographic \</span><br><span class="line">		-bios <span class="variable">$(BOOTLOADER)</span> \</span><br><span class="line">		-device loader,file=<span class="variable">$(KERNEL_BIN)</span>,addr=<span class="variable">$(KERNEL_ENTRY_PA)</span></span><br></pre></td></tr></table></figure>
 
 <p>其中<code>-bios $(BOOTLOADER)</code> 在硬件内存中的固定位置 <code>0x80000000</code> 处放置了一个 BootLoader 程序 RustSBI. <code>-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)</code> 这个参数表示硬件内存中的特定位置 <code>$(KERNEL_ENTRY_PA)</code> 放置了操作系统的二进制代码 <code>$(KERNEL_BIN)</code> , <code>$(KERNEL_ENTRY_PA)</code> 的值是 <code>0x80200000</code> .</p>
-<span id="more"></span>
-
 <p>当我们执行包含上次参数的 qemu-system-riscv64 软件，就意味给这台虚拟的 RISC-V64 计算机加电了。此时，CPU的其它通用寄存器清零， 而PC寄存器会指向 <code>0x1000</code> 的位置，即 CPU 加电后执行的第一条指令的位置（固化在硬件中的一小段引导代码），它会很快跳转到 <code>0x80000000</code> 处， 即 RustSBI 的第一条指令. </p>
 <p>RustSBI 完成基本的硬件初始化后， 会跳转操作系统的二进制代码 <code>$(KERNEL_BIN)</code> 所在内存位置 <code>0x80200000</code> ，执行操作系统的第一条指令。 这时我们的编写的操作系统才开始正式工作。</p>
-<p>其中， <code>0x80000000</code> 是QEMU的硬件模拟代码中设定好的 <code>Bootloader</code> 的起始地址，<code>0x80200000</code> 是 <code>Bootloader--RustSBI</code> 的代码中设定好的 <code>os</code> 的起始地址。</p>
+<p>其中， <code>0x80000000</code> 是QEMU的硬件模拟代码中设定好的 <code>Bootloader</code> 的起始地址，<code>0x80200000</code> 是 <code>Bootloader--RustSBI</code> 的代码中设定好的 <code>os</code> 的<strong>起始地址</strong>。</p>
 <blockquote>
 <p>SBI 是 RISC-V 的一种底层规范，操作系统内核可直接调用SBI提供的底层功能，如关机、显示字符串等。</p>
 </blockquote>
 <hr>
-<p>应用程序访问操作系统提供的系统调用的指令是 <code>ecall</code> ，操作系统访问 RustSBI提供的SBI服务的SBI调用的指令也是 <code>ecall</code> . RustSBI 位于完全掌控机器的机器特权级（Machine Mode），通过 <code>ecall</code> 指令，可以完成从弱特权级到强特权级的转换。</p>
+<p>应用程序访问操作系统提供的系统调用的指令是 <code>ecall</code> ，操作系统访问 <strong>RustSBI</strong> 提供的SBI服务的SBI调用的指令也是 <code>ecall</code> . RustSBI 位于完全掌控机器的机器特权级（Machine Mode），通过 <code>ecall</code> 指令，可以完成从弱特权级到强特权级的转换。</p>
 <figure class="highlight rust"><table><tr><td class="code"><pre><span class="line"><span class="comment">// os/src/sbi.rs</span></span><br><span class="line"><span class="keyword">fn</span> <span class="title function_">sbi_call</span>(which: <span class="type">usize</span>, arg0: <span class="type">usize</span>, arg1: <span class="type">usize</span>, arg2: <span class="type">usize</span>) <span class="punctuation">-&gt;</span> <span class="type">usize</span> &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">ret</span>;</span><br><span class="line">    <span class="keyword">unsafe</span> &#123;</span><br><span class="line">        llvm_asm!(<span class="string">&quot;ecall&quot;</span></span><br><span class="line">            : <span class="string">&quot;=&#123;x10&#125;&quot;</span> (ret)</span><br><span class="line">            : <span class="string">&quot;&#123;x10&#125;&quot;</span> (arg0), <span class="string">&quot;&#123;x11&#125;&quot;</span> (arg1), <span class="string">&quot;&#123;x12&#125;&quot;</span> (arg2), <span class="string">&quot;&#123;x17&#125;&quot;</span> (which)</span><br><span class="line">...</span><br><span class="line"></span><br><span class="line"><span class="comment">// os/src/main.rs</span></span><br><span class="line"><span class="keyword">const</span> SBI_SHUTDOWN: <span class="type">usize</span> = <span class="number">8</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">fn</span> <span class="title function_">shutdown</span>() <span class="punctuation">-&gt;</span> ! &#123;</span><br><span class="line">    <span class="title function_ invoke__">sbi_call</span>(SBI_SHUTDOWN, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">    <span class="built_in">panic!</span>(<span class="string">&quot;It should shutdown!&quot;</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> <span class="keyword">fn</span> <span class="title function_">_start</span>() &#123;</span><br><span class="line">    <span class="title function_ invoke__">shutdown</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
+<p>编译执行.</p>
+<figure class="highlight shell"><table><tr><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">编译生成ELF格式的执行文件</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">cargo build --release</span></span><br><span class="line"> Compiling os v0.1.0 (/media/chyyuu/ca8c7ba6-51b7-41fc-8430-e29e31e5328f/thecode/rust/os_kernel_lab/os)</span><br><span class="line">  Finished release [optimized] target(s) in 0.15s</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">把ELF执行文件转成bianary文件</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">rust-objcopy --binary-architecture=riscv64 target/riscv64gc-unknown-none-elf/release/os --strip-all -O binary target/riscv64gc-unknown-none-elf/release/os.bin</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">加载运行</span></span><br><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">qemu-system-riscv64 -machine virt -nographic -bios ../bootloader/rustsbi-qemu.bin -device loader,file=target/riscv64gc-unknown-none-elf/release/os.bin,addr=0x80200000</span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">无法退出，风扇狂转，感觉碰到死循环</span></span><br></pre></td></tr></table></figure>
+
+<p>对 <code>os</code> ELF执行程序，通过rust-readobj分析，看到的入口地址不是 RustSBI 约定的 <code>0x80200000</code> 。我们需要修改 <code>os</code> ELF执行程序的内存布局。</p>
 <h4 id="链接脚本配置内存布局"><a href="#链接脚本配置内存布局" class="headerlink" title="链接脚本配置内存布局"></a>链接脚本配置内存布局</h4><p>我们可以通过 <strong>链接脚本</strong> (Linker Script) 调整链接器的行为，使得最终生成的可执行文件的内存布局符合我们的预期。 我们修改 Cargo 的配置文件来使用我们自己的链接脚本 <code>os/src/linker.ld</code> 而非使用默认的内存布局.</p>
 <figure class="highlight toml"><table><tr><td class="code"><pre><span class="line"><span class="comment"># os/.cargo/config.toml</span></span><br><span class="line"><span class="section">[build]</span></span><br><span class="line"><span class="attr">target</span> = <span class="string">&quot;riscv64gc-unknown-none-elf&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="section">[target.riscv64gc-unknown-none-elf]</span></span><br><span class="line"><span class="attr">rustflags</span> = [</span><br><span class="line">    <span class="string">&quot;-Clink-arg=-Tsrc/linker.ld&quot;</span>, <span class="string">&quot;-Cforce-frame-pointers=yes&quot;</span></span><br><span class="line">]</span><br></pre></td></tr></table></figure>
 
 <p>具体的链接脚本 <code>os/src/linker.ld</code> 如下.</p>
 <figure class="highlight plaintext"><table><tr><td class="code"><pre><span class="line">OUTPUT_ARCH(riscv)</span><br><span class="line">ENTRY(_start)</span><br><span class="line">BASE_ADDRESS = 0x80200000;</span><br><span class="line"></span><br><span class="line">SECTIONS</span><br><span class="line">&#123;</span><br><span class="line">    . = BASE_ADDRESS;</span><br><span class="line">    skernel = .;</span><br><span class="line"></span><br><span class="line">    stext = .;</span><br><span class="line">    .text : &#123;</span><br><span class="line">        *(.text.entry)</span><br><span class="line">        *(.text .text.*)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    . = ALIGN(4K);</span><br><span class="line">    etext = .;</span><br><span class="line">    srodata = .;</span><br><span class="line">    .rodata : &#123;</span><br><span class="line">        *(.rodata .rodata.*)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    . = ALIGN(4K);</span><br><span class="line">    erodata = .;</span><br><span class="line">    sdata = .;</span><br><span class="line">    .data : &#123;</span><br><span class="line">        *(.data .data.*)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    . = ALIGN(4K);</span><br><span class="line">    edata = .;</span><br><span class="line">    .bss : &#123;</span><br><span class="line">        *(.bss.stack)</span><br><span class="line">        sbss = .;</span><br><span class="line">        *(.bss .bss.*)</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    . = ALIGN(4K);</span><br><span class="line">    ebss = .;</span><br><span class="line">    ekernel = .;</span><br><span class="line"></span><br><span class="line">    /DISCARD/ : &#123;</span><br><span class="line">        *(.eh_frame)</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
+<p>第 1 行我们设置了目标平台为 riscv ；第 2 行我们设置了整个程序的入口点为之前定义的全局符号 <code>_start</code>； 第 3 行定义了一个常量 <code>BASE_ADDRESS</code> 为 <code>0x80200000</code>.</p>
+<p>第 5 行，<code>.</code> 表示当前地址，链接器会从它指向的位置开始，往下放置，从输入的目标文件中，收集来的段。我们可以对 <code>.</code> 进行赋值来调整接下来的段放在哪里，也可以创建一些全局符号赋值为 <code>.</code> 从而记录这一时刻的位置。</p>
+<p>对于</p>
+<figure class="highlight plaintext"><table><tr><td class="code"><pre><span class="line">.rodata : &#123;</span><br><span class="line">    *(.rodata)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>冒号前面表示最终生成的可执行文件的一个段的名字，花括号内按照放置顺序将所有输入目标文件的哪些段放在这个段中。每一行格式为 <code>&lt;ObjectFile&gt;(SectionName)</code>，表示目标文件 <code>ObjectFile</code> 的名为 <code>SectionName</code> 的段需要被放进去。我们也可以使用通配符。</p>
+<p>因此，最终的合并结果是，在最终可执行文件 中各个常见的段 <code>.text, .rodata .data, .bss</code> 从低地址到高地址按顺序放置，每个段里面都包括了所有输入目标文件的同名段， 且每个段都有两个全局符号给出了它的开始和结束地址（比如 <code>.text</code> 段的开始和结束地址分别是 <code>stext</code> 和 <code>etext</code> ）.</p>
+<p><code>ALIGN</code> 用于实现地址对齐，了解可见 <a href="https://www.bilibili.com/video/BV1aV4y1y7Sd/">到底为什么要内存对齐？</a></p>
+<p>对链接脚本可以查询<a href="https://www.cnblogs.com/jianhua1992/p/16852784.html">链接脚本(Linker Scripts)语法和规则解析(自官方手册) - BSP-路人甲 - 博客园</a>.</p>
+<blockquote>
+<p>Q: 如何做到执行环境的初始化代码被放在内存上以 <code>0x80200000</code> 开头的区域上？</p>
+<p>A: 从<code>0x80200000</code>开始，第一个被放置的 是 <code>.text</code> ，而里面第一个被放置的又是来自 <code>entry.asm</code> 中的段 <code>.text.entry</code>，这个段恰恰是含有两条指令的执行环境初始化代码， 它在所有段中最早被放置在我们期望的 <code>0x80200000</code> 处.</p>
+</blockquote>
+<h4 id="汇编配置栈空间布局"><a href="#汇编配置栈空间布局" class="headerlink" title="汇编配置栈空间布局"></a>汇编配置栈空间布局</h4><figure class="highlight plaintext"><table><tr><td class="code"><pre><span class="line"># os/src/entry.asm</span><br><span class="line">	.section .text.entry</span><br><span class="line">    .globl _start</span><br><span class="line">_start:</span><br><span class="line">    la sp, boot_stack_top</span><br><span class="line">    call rust_main</span><br><span class="line"></span><br><span class="line">    .section .bss.stack</span><br><span class="line">    .globl boot_stack_lower_bound</span><br><span class="line">boot_stack_lower_bound:</span><br><span class="line">    .space 4096 * 16</span><br><span class="line">    .globl boot_stack_top</span><br><span class="line">boot_stack_top:</span><br></pre></td></tr></table></figure>
 
 
+
+<hr>
 <h4 id="ch2-批处理系统"><a href="#ch2-批处理系统" class="headerlink" title="ch2 批处理系统"></a>ch2 批处理系统</h4><p>chap2实现应用程序一部分，在OS启动时执行了<code>clear_bss()</code>函数，关于BSS的功能，参考<a href="https://blog.csdn.net/sgc_bf/article/details/101227860">静态存储区（Bss、数据段、代码段），堆，栈-CSDN博客</a>.</p>
 <figure class="highlight rust"><table><tr><td class="code"><pre><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="meta">#[link_section = <span class="string">&quot;.text.entry&quot;</span>]</span></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> <span class="keyword">fn</span> <span class="title function_">_start</span>() <span class="punctuation">-&gt;</span> ! &#123;</span><br><span class="line">    <span class="title function_ invoke__">clear_bss</span>();</span><br><span class="line">    <span class="title function_ invoke__">exit</span>(<span class="title function_ invoke__">main</span>());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p>在<code>lib.rs</code>中定义一个<code>main</code>函数，其具有弱链接特性。在编译过程中，弱符号遇到强符号时，会选择强符号而丢掉弱符号。参考<a href="https://zhuanlan.zhihu.com/p/55768978">嵌入式C语言自我修养 09：链接过程中的强符号和弱符号 - 知乎</a>.</p>
-<!--more-->
-
 <p>故rCore文档中说：</p>
 <blockquote>
 <p>我们使用 Rust 宏将其标志为弱链接。这样在最后链接的时候， 虽然 <code>lib.rs</code> 和 <code>bin</code> 目录下的某个应用程序中都有 <code>main</code> 符号， 但由于 <code>lib.rs</code> 中的 <code>main</code> 符号是弱链接， 链接器会使用 <code>bin</code> 目录下的函数作为 <code>main</code> 。 如果在 <code>bin</code> 目录下找不到任何 <code>main</code> ，那么编译也能通过，但会在运行时报错。</p>
 </blockquote>
 <figure class="highlight rust"><table><tr><td class="code"><pre><span class="line"><span class="meta">#![feature(linkage)]</span>    <span class="comment">// 启用弱链接特性</span></span><br><span class="line"><span class="meta">#[linkage = <span class="string">&quot;weak&quot;</span>]</span></span><br><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="keyword">fn</span> <span class="title function_">main</span>() <span class="punctuation">-&gt;</span> <span class="type">i32</span> &#123;</span><br><span class="line">    <span class="built_in">panic!</span>(<span class="string">&quot;Cannot find main!&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
-<p>在系统调用时，我们需要将对应的参数储存在寄存器中，我们需要了解RISC-V架构中寄存器的相关知识<a href="https://blog.csdn.net/weixin_42031299/article/details/132839814">RISV-V架构的寄存器介绍_riscv寄存器-CSDN博客</a>.</p>
+<p><a id="syscall"></a><br>在系统调用时，我们需要将对应的参数储存在寄存器中，我们需要了解RISC-V架构中寄存器的相关知识<a href="https://blog.csdn.net/weixin_42031299/article/details/132839814">RISV-V架构的寄存器介绍_riscv寄存器-CSDN博客</a>.</p>
 <p>这里使用了Rust的内联汇编宏<code>asm!</code>，参考<a href="https://doc.rust-lang.org/nightly/reference/inline-assembly.html">Inline assembly - The Rust Reference</a>. 由于Rust 编译器无法判定汇编代码的安全性，所以我们需要将其包裹在 unsafe 块中.</p>
 <p>简而言之，这条汇编代码的执行结果是以寄存器 <code>a0~a2</code> 来保存系统调用的参数，以及寄存器 <code>a7</code> 保存 syscall ID， 返回值通过寄存器 <code>a0</code> 传递给局部变量 <code>ret</code>.</p>
 <figure class="highlight rust"><table><tr><td class="code"><pre><span class="line"><span class="comment">// user/src/syscall.rs</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">fn</span> <span class="title function_">syscall</span>(id: <span class="type">usize</span>, args: [<span class="type">usize</span>; <span class="number">3</span>]) <span class="punctuation">-&gt;</span> <span class="type">isize</span> &#123;</span><br><span class="line">   <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">ret</span>: <span class="type">isize</span>;</span><br><span class="line">   <span class="keyword">unsafe</span> &#123;</span><br><span class="line">       core::arch::asm!(</span><br><span class="line">           <span class="string">&quot;ecall&quot;</span>,</span><br><span class="line">           <span class="title function_ invoke__">inlateout</span>(<span class="string">&quot;x10&quot;</span>) args[<span class="number">0</span>] =&gt; ret,</span><br><span class="line">           <span class="title function_ invoke__">in</span>(<span class="string">&quot;x11&quot;</span>) args[<span class="number">1</span>],</span><br><span class="line">           <span class="title function_ invoke__">in</span>(<span class="string">&quot;x12&quot;</span>) args[<span class="number">2</span>],</span><br><span class="line">           <span class="title function_ invoke__">in</span>(<span class="string">&quot;x17&quot;</span>) id</span><br><span class="line">       );</span><br><span class="line">   &#125;</span><br><span class="line">   ret</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
@@ -460,6 +470,20 @@
       <tags>
         <tag>Rust</tag>
       </tags>
+  </entry>
+  <entry>
+    <title>Hello World</title>
+    <url>/2024/10/20/hello-world/</url>
+    <content><![CDATA[<h2 id="第一部分-论神"><a href="#第一部分-论神" class="headerlink" title="第一部分 论神"></a>第一部分 论神</h2><h3 id="界说"><a href="#界说" class="headerlink" title="界说"></a>界说</h3><p>(一) 自因(causa sui)，我理解为这样的东西，它的本质(essentia)即包含存在(existentia)，或者它的本性只能设想为存在着。</p>
+<p>(二) 凡是可以为同性质的另一事物所限制的东西，就叫做自类有限(insuo genere finita)。例如一个物体被称为有限，就是因为除了这个物体之外，我们常常可以设想另一个更大的物体。同样，一个思想可以为另一个思想所限制。但是物体不能限制思想，思想也不能限制物体。</p>
+<p>(三) 实体(substantia)，我理解为在自身内并通过自身而被认识的东西。换言之，形成实体的概念，可以无须借助于他物的概念。</p>
+<p>(四) 属性(attributus)，我理解为由知性(intellectus)看来是构成实体的 本质的东西。</p>
+<p>(五) 样式(modus)，我理解为实体的分殊(affectiones)，亦即在他物内(inalio est)通过他物而被认知的东西(per alium concipitur)。</p>
+<p>(六) 神(Deus)，我理解为绝对无限的存在，亦即具有无限“多”属性的实体，其中每一属性各表示永恒无限的本质。说明 我说神是绝对无限而不说它是自类无限(in suo genereinfinita)，因为仅仅是自类无限的东西，我们可以否认其无限多的属性；而绝对无限者的本性中就具备了一切足以表示本质的东西，却并不包含否定。</p>
+<p>(七) 凡是仅仅由自身本性的必然性而存在、其行为仅仅由它自身决定的东西叫做自由(libera)。反之，凡一物的存在及其行为均按一定的方式为他物所决定，便叫做必然(necessaria，)或受制(coata)。</p>
+<p>(八) 永恒(aeternitas)，我理解为存在的自身，就存在被理解为只能从永恒事物的界说中必然推出而言。</p>
+<p><strong>说明</strong> 因为这样的存在也可以设想为永恒的真理，有如事物的本质，因此不可以用绵延或时间去解释它，虽说绵延可以设想为无始无终。</p>
+]]></content>
   </entry>
   <entry>
     <title>rCore-2</title>
