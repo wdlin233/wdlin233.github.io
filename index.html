@@ -329,7 +329,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2024-11-29 18:19:37" itemprop="dateModified" datetime="2024-11-29T18:19:37+08:00">2024-11-29</time>
+      <time title="修改时间：2024-12-02 11:23:52" itemprop="dateModified" datetime="2024-12-02T11:23:52+08:00">2024-12-02</time>
     </span>
 
   
@@ -339,14 +339,14 @@
         <i class="far fa-file-word"></i>
       </span>
       <span class="post-meta-item-text">本文字数：</span>
-      <span>11k</span>
+      <span>12k</span>
     </span>
     <span class="post-meta-item" title="阅读时长">
       <span class="post-meta-item-icon">
         <i class="far fa-clock"></i>
       </span>
       <span class="post-meta-item-text">阅读时长 &asymp;</span>
-      <span>20 分钟</span>
+      <span>22 分钟</span>
     </span>
 </div>
 
@@ -357,7 +357,17 @@
     
     
     <div class="post-body" itemprop="articleBody">
-          <h3 id="ch1-基本环境"><a href="#ch1-基本环境" class="headerlink" title="ch1 基本环境"></a>ch1 基本环境</h3><h4 id="裸机启动过程"><a href="#裸机启动过程" class="headerlink" title="裸机启动过程"></a>裸机启动过程</h4><p>我们通过QEMU模拟CPU加电的执行过程：</p>
+          <blockquote>
+<p>文档建设中…</p>
+</blockquote>
+<h3 id="ch1-基本环境"><a href="#ch1-基本环境" class="headerlink" title="ch1 基本环境"></a>ch1 基本环境</h3><h4 id="用户态执行环境"><a href="#用户态执行环境" class="headerlink" title="用户态执行环境"></a>用户态执行环境</h4><p>我们发现Rust编译器要找的入口函数是 <code>_start()</code> ，于是我们可以在 <code>main.rs</code> 中添加如下内容.</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// os/src/main.rs</span></span><br><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> <span class="keyword">fn</span> <span class="title function_">_start</span>() &#123;</span><br><span class="line">    <span class="keyword">loop</span>&#123;&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>但是</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_">$ </span><span class="language-bash">qemu-riscv64 target/riscv64gc-unknown-none-elf/debug/os</span></span><br><span class="line">  段错误 (核心已转储)</span><br></pre></td></tr></table></figure>
+
+<p>QEMU有两种运行模式，</p>
+<h4 id="裸机启动过程与关机"><a href="#裸机启动过程与关机" class="headerlink" title="裸机启动过程与关机"></a>裸机启动过程与关机</h4><p>我们通过QEMU模拟CPU加电的执行过程：</p>
 <figure class="highlight makefile"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># os/Makefile</span></span><br><span class="line"><span class="section">run-inner: build</span></span><br><span class="line">	@qemu-system-riscv64 \</span><br><span class="line">		-machine virt \</span><br><span class="line">		-nographic \</span><br><span class="line">		-bios <span class="variable">$(BOOTLOADER)</span> \</span><br><span class="line">		-device loader,file=<span class="variable">$(KERNEL_BIN)</span>,addr=<span class="variable">$(KERNEL_ENTRY_PA)</span></span><br></pre></td></tr></table></figure>
 
 <p>其中<code>-bios $(BOOTLOADER)</code> 在硬件内存中的固定位置 <code>0x80000000</code> 处放置了一个 BootLoader 程序 RustSBI. <code>-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)</code> 这个参数表示硬件内存中的特定位置 <code>$(KERNEL_ENTRY_PA)</code> 放置了操作系统的二进制代码 <code>$(KERNEL_BIN)</code> , <code>$(KERNEL_ENTRY_PA)</code> 的值是 <code>0x80200000</code> .</p>
@@ -596,13 +606,13 @@
     <span class="post-meta-item-icon">
       <i class="fa fa-chart-line"></i>
     </span>
-    <span title="站点总字数">45k</span>
+    <span title="站点总字数">46k</span>
   </span>
   <span class="post-meta-item">
     <span class="post-meta-item-icon">
       <i class="fa fa-coffee"></i>
     </span>
-    <span title="站点阅读时长">1:22</span>
+    <span title="站点阅读时长">1:24</span>
   </span>
 </div>
 <div class="busuanzi-count">
