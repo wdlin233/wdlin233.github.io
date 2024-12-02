@@ -1,20 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <search>
   <entry>
-    <title>Hello World</title>
-    <url>/2024/10/20/hello-world/</url>
-    <content><![CDATA[<h2 id="第一部分-论神"><a href="#第一部分-论神" class="headerlink" title="第一部分 论神"></a>第一部分 论神</h2><h3 id="界说"><a href="#界说" class="headerlink" title="界说"></a>界说</h3><p>(一) 自因(causa sui)，我理解为这样的东西，它的本质(essentia)即包含存在(existentia)，或者它的本性只能设想为存在着。</p>
-<p>(二) 凡是可以为同性质的另一事物所限制的东西，就叫做自类有限(insuo genere finita)。例如一个物体被称为有限，就是因为除了这个物体之外，我们常常可以设想另一个更大的物体。同样，一个思想可以为另一个思想所限制。但是物体不能限制思想，思想也不能限制物体。</p>
-<p>(三) 实体(substantia)，我理解为在自身内并通过自身而被认识的东西。换言之，形成实体的概念，可以无须借助于他物的概念。</p>
-<p>(四) 属性(attributus)，我理解为由知性(intellectus)看来是构成实体的 本质的东西。</p>
-<p>(五) 样式(modus)，我理解为实体的分殊(affectiones)，亦即在他物内(inalio est)通过他物而被认知的东西(per alium concipitur)。</p>
-<p>(六) 神(Deus)，我理解为绝对无限的存在，亦即具有无限“多”属性的实体，其中每一属性各表示永恒无限的本质。说明 我说神是绝对无限而不说它是自类无限(in suo genereinfinita)，因为仅仅是自类无限的东西，我们可以否认其无限多的属性；而绝对无限者的本性中就具备了一切足以表示本质的东西，却并不包含否定。</p>
-<p>(七) 凡是仅仅由自身本性的必然性而存在、其行为仅仅由它自身决定的东西叫做自由(libera)。反之，凡一物的存在及其行为均按一定的方式为他物所决定，便叫做必然(necessaria，)或受制(coata)。</p>
-<p>(八) 永恒(aeternitas)，我理解为存在的自身，就存在被理解为只能从永恒事物的界说中必然推出而言。</p>
-<p><strong>说明</strong> 因为这样的存在也可以设想为永恒的真理，有如事物的本质，因此不可以用绵延或时间去解释它，虽说绵延可以设想为无始无终。</p>
-]]></content>
-  </entry>
-  <entry>
     <title>rCore-1 ch1~3</title>
     <url>/2024/10/21/OS%E5%AD%A6%E4%B9%A0%E6%97%A5%E5%BF%97/</url>
     <content><![CDATA[<blockquote>
@@ -124,7 +110,7 @@
 
 <p>含义为<strong>跳转到寄存器 <code>ra</code> （即 <code>x1</code>）保存的物理地址</strong>，由于 <strong><code>x0</code> 是一个恒为 0 的寄存器</strong>，任何写入到 <code>x0</code> 的值都会被直接丢弃，在 <code>rd</code> 中，保存这一步被省略，即<strong>不需要保存返回地址</strong>。</p>
 <p>进行函数调用的时候，我们通过 <code>jalr</code> 指令 保存返回地址并实现跳转；而在函数即将返回的时候，则通过 <code>ret</code> 指令跳转之前的下一条指令继续执行。这<strong>两条指令</strong>实现了函数调用流程的核心机制。</p>
-<h4 id="函数调用上下文"><a href="#函数调用上下文" class="headerlink" title="函数调用上下文"></a>函数调用上下文</h4><p>编译器除了函数调用的相关指令之外，基本不使用 <code>ra</code> 寄存器。意即，如果在函数中没有调用其他函数，那 ra 的值不会变化，函数调用流程能正常工作。但是，实际编写代码时，我们常常会遇到函数<strong>多层嵌套调用</strong>的情形。</p>
+<h4 id="函数调用上下文与调用规范"><a href="#函数调用上下文与调用规范" class="headerlink" title="函数调用上下文与调用规范"></a>函数调用上下文与调用规范</h4><p>编译器除了函数调用的相关指令之外，基本不使用 <code>ra</code> 寄存器。意即，如果在函数中没有调用其他函数，那 ra 的值不会变化，函数调用流程能正常工作。但是，实际编写代码时，我们常常会遇到函数<strong>多层嵌套调用</strong>的情形。</p>
 <p>因此我们需要保证，在一个函数调用子函数的前后，包括 <code>ra</code> 寄存器在内的所有通用寄存器的值都不能发生变化。 我们将由于函数调用，在控制流转移前后需要保持不变的<strong>寄存器集合</strong>称之为<strong>函数调用上下文</strong>(Context) 或称<strong>活动记录</strong> (Activation Record).</p>
 <p>在调用子函数之前，我们需要在 内存中的一个区域保存(Save)函数调用上下文中的寄存器；而之后我们会从内存中同样的区域读取并恢复(Restore)函数调用上下文中的寄存器。</p>
 <p>函数调用上下文中的寄存器被分为如下两类：</p>
@@ -132,19 +118,30 @@
 <li><strong>被调用者保存</strong> (Callee-Saved) 寄存器，即被调用的函数保证调用它前后，这些寄存器保持不变；</li>
 <li><strong>调用者保存</strong> (Caller-Saved) 寄存器，被调用的函数可能会覆盖这些寄存器。</li>
 </ul>
+<p>寄存器可见于<a href="https://riscv.org/wp-content/uploads/2015/01/riscv-calling.pdf">RISC-V 架构的 C 语言调用规范</a>或<a href="http://www.cs.cornell.edu/courses/cs3410/2019sp/schedule/slides/10-calling-notes-bw.pdf">Cornell</a>.</p>
 <p>函数调用上下文由调用者和被调用者分别保存，其具体过程分别如下：</p>
 <ul>
 <li>调用者：首先保存不希望在函数调用过程中发生变化的调用者保存寄存器，然后通过 jal&#x2F;jalr 指令调用子函数，返回回来之后恢复这些寄存器。</li>
 <li>被调用者：在函数开头保存函数执行过程中被用到的被调用者保存寄存器，然后执行函数，在退出之前恢复这些寄存器。</li>
 </ul>
 <p>无论是调用者还是被调用者，都会因调用行为而需要两段匹配的保存和恢复寄存器的汇编代码，可以分别将其称为 <strong>开场白</strong> (Prologue) 和 <strong>收场白</strong> (Epilogue)，它们会由编译器帮我们自动插入。</p>
-<h4 id="栈指针"><a href="#栈指针" class="headerlink" title="栈指针"></a>栈指针</h4><p><em><strong>寄存器被保存在 栈 (Stack)中</strong></em> ，<code> sp(x2)</code> 常用来保存 <strong>栈指针</strong> (Stack Pointer)，它是一个指向了内存中<strong>已经用过的位置</strong>的一个地址。在 RISC-V 架构中，栈是从高地址到低地址增长的。在一个函数中，作为起始的开场白负责分配一块新的栈空间，其实它只需要知道需要空间的大小，<strong>然后将</strong> <code>sp</code> 的值减小相应的字节数即可，于是物理地址区间<code>[新sp,旧sp)</code> 对应的物理内存便可以被这个函数用来函数调用上下文的保存&#x2F;恢复 以及其他工作，这块物理内存被称为这个函数的 <strong>栈帧</strong> (Stackframe)。</p>
-<p>同理，函数中作为结尾的收场白负责将开场白分配的栈帧回收，这也仅仅需要 将 <code>sp</code> 的值增加相同的字节数回到分配之前的状态。这也可以解释为什么 <code>sp</code> 是一个<strong>被调用者保存寄存器</strong>(作为临时寄存器使用，保存后才能在函数中使用)。</p>
-<blockquote>
-<p>可以理解为手动处理地址之间的变化，实现了一个栈.</p>
-</blockquote>
+<h4 id="栈指针与栈帧"><a href="#栈指针与栈帧" class="headerlink" title="栈指针与栈帧"></a>栈指针与栈帧</h4><p>函数调用上下文的保存&#x2F;恢复的寄存器保存在栈(Stack)中 . <code> sp</code>(即<code>x2</code>寄存器) 用来保存<strong>栈指针</strong> (Stack Pointer)，它是一个指向了内存中<strong>已经用过的位置</strong>的一个地址。</p>
+<p>在 RISC-V 架构中，栈是从高地址到低地址增长的。在一个函数中，作为起始的<strong>开场白</strong>负责分配一块新的栈空间，其实它只需要知道需要空间的大小，然后将 <code>sp</code> 的值减小相应的字节数即可，于是物理地址区间 [新sp,旧sp) 对应的物理内存便可以被用于，函数调用上下文的保存&#x2F;恢复等，这块物理内存被称为这个函数的<strong>栈帧</strong> (Stackframe).</p>
+<p>同理，函数中作为结尾的<strong>收场白</strong>负责将开场白分配的栈帧回收，这也仅仅需要 将 <code>sp</code> 的值增加相同的字节数回到分配之前的状态。这也可以解释为什么 <code>sp</code> 是一个<strong>被调用者保存寄存器</strong>。</p>
+<p>函数调用过程中，栈帧分配与<code>sp</code>寄存器变化如图：</p>
 <img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/CallStack.png" alt= "栈指针" style="zoom:33%;" />
 
+<p>一个函数的栈帧内容可能如下.</p>
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/StackFrame.png" alt="StackFrame" style="zoom:67%;" />
+
+<p>它的开头和结尾分别在 <code>sp(x2)</code> 和 <code>fp(s0)</code> 所指向的地址。按照地址从高到低分别有以下内容，它们都是通过 <code>sp</code> 加上一个偏移量来访问的：</p>
+<ul>
+<li><code>ra</code> 寄存器保存其返回之后的跳转地址，是一个调用者保存寄存器；</li>
+<li>父亲栈帧的结束地址 <code>fp</code>，是一个被调用者保存寄存器；</li>
+<li>其他被调用者保存寄存器 <code>s1</code>~&#96;s11&#96;；</li>
+<li>函数所使用到的局部变量。</li>
+</ul>
+<p>因此，栈上实际上保存了一条完整的函数调用链，通过适当的方式我们可以实现对它的跟踪。</p>
 <h4 id="程序内存布局"><a href="#程序内存布局" class="headerlink" title="程序内存布局"></a>程序内存布局</h4><p>在我们将源代码编译为可执行文件之后，它就会变成一个看似充满了杂乱无章的字节的一个文件。但我们知道这些字节至少可以分成代码和数据两部分，在 程序运行起来的时候它们的功能并不相同：代码部分由一条条可以被 CPU 解码并执行的指令组成，而数据部分只是被 CPU 视作可用的存储空间。事实上 我们还可以根据其功能进一步把两个部分划分为更小的单位： <strong>段</strong> (Section) 。不同的段会被编译器放置在内存不同的位置上，这构成了程序的 <strong>内存布局</strong> (Memory Layout)。一种典型的程序相对内存布局如下：</p>
 <img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/MemoryLayout.png" alt="内存布局" style="zoom:33%;" />
 
@@ -545,6 +542,20 @@
       <tags>
         <tag>Rust</tag>
       </tags>
+  </entry>
+  <entry>
+    <title>Hello World</title>
+    <url>/2024/10/20/hello-world/</url>
+    <content><![CDATA[<h2 id="第一部分-论神"><a href="#第一部分-论神" class="headerlink" title="第一部分 论神"></a>第一部分 论神</h2><h3 id="界说"><a href="#界说" class="headerlink" title="界说"></a>界说</h3><p>(一) 自因(causa sui)，我理解为这样的东西，它的本质(essentia)即包含存在(existentia)，或者它的本性只能设想为存在着。</p>
+<p>(二) 凡是可以为同性质的另一事物所限制的东西，就叫做自类有限(insuo genere finita)。例如一个物体被称为有限，就是因为除了这个物体之外，我们常常可以设想另一个更大的物体。同样，一个思想可以为另一个思想所限制。但是物体不能限制思想，思想也不能限制物体。</p>
+<p>(三) 实体(substantia)，我理解为在自身内并通过自身而被认识的东西。换言之，形成实体的概念，可以无须借助于他物的概念。</p>
+<p>(四) 属性(attributus)，我理解为由知性(intellectus)看来是构成实体的 本质的东西。</p>
+<p>(五) 样式(modus)，我理解为实体的分殊(affectiones)，亦即在他物内(inalio est)通过他物而被认知的东西(per alium concipitur)。</p>
+<p>(六) 神(Deus)，我理解为绝对无限的存在，亦即具有无限“多”属性的实体，其中每一属性各表示永恒无限的本质。说明 我说神是绝对无限而不说它是自类无限(in suo genereinfinita)，因为仅仅是自类无限的东西，我们可以否认其无限多的属性；而绝对无限者的本性中就具备了一切足以表示本质的东西，却并不包含否定。</p>
+<p>(七) 凡是仅仅由自身本性的必然性而存在、其行为仅仅由它自身决定的东西叫做自由(libera)。反之，凡一物的存在及其行为均按一定的方式为他物所决定，便叫做必然(necessaria，)或受制(coata)。</p>
+<p>(八) 永恒(aeternitas)，我理解为存在的自身，就存在被理解为只能从永恒事物的界说中必然推出而言。</p>
+<p><strong>说明</strong> 因为这样的存在也可以设想为永恒的真理，有如事物的本质，因此不可以用绵延或时间去解释它，虽说绵延可以设想为无始无终。</p>
+]]></content>
   </entry>
   <entry>
     <title>rCore-2</title>
