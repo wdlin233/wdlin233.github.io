@@ -33,7 +33,7 @@
 <meta property="og:image" content="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/MemoryLayout.png">
 <meta property="og:image" content="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/context-switch.png">
 <meta property="article:published_time" content="2024-10-21T12:38:17.000Z">
-<meta property="article:modified_time" content="2024-12-02T14:22:07.642Z">
+<meta property="article:modified_time" content="2024-12-03T02:55:23.840Z">
 <meta property="article:author" content="wdlin233">
 <meta property="article:tag" content="OS">
 <meta name="twitter:card" content="summary">
@@ -235,7 +235,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2024-12-02 22:22:07" itemprop="dateModified" datetime="2024-12-02T22:22:07+08:00">2024-12-02</time>
+      <time title="修改时间：2024-12-03 10:55:23" itemprop="dateModified" datetime="2024-12-03T10:55:23+08:00">2024-12-03</time>
     </span>
 
   
@@ -408,19 +408,19 @@
 <li>函数所使用到的局部变量。</li>
 </ul>
 <p>因此，栈上实际上保存了一条完整的函数调用链，通过适当的方式我们可以实现对它的跟踪。</p>
-<h4 id="程序内存布局"><a href="#程序内存布局" class="headerlink" title="程序内存布局"></a>程序内存布局</h4><p>在我们将源代码编译为可执行文件之后，它就会变成一个看似充满了杂乱无章的字节的一个文件。但我们知道这些字节至少可以分成代码和数据两部分，在 程序运行起来的时候它们的功能并不相同：代码部分由一条条可以被 CPU 解码并执行的指令组成，而数据部分只是被 CPU 视作可用的存储空间。事实上 我们还可以根据其功能进一步把两个部分划分为更小的单位： <strong>段</strong> (Section) 。不同的段会被编译器放置在内存不同的位置上，这构成了程序的 <strong>内存布局</strong> (Memory Layout)。一种典型的程序相对内存布局如下：</p>
+<h4 id="程序内存布局"><a href="#程序内存布局" class="headerlink" title="程序内存布局"></a>程序内存布局</h4><p>当我们将源代码编译为可执行文件之后，会得到一个看似充满杂乱无章字节的文件。这些字节至少可以分成代码和数据两部分，代码部分由一条条可以被 CPU 解码并执行的指令组成，而数据部分只被 CPU 视作可用的存储空间。</p>
+<p>我们还可根据其功能，进一步把两个部分划分为更小的单位： <strong>段</strong> (Section) . 不同的段会被编译器放置在内存不同的位置上，这构成了程序的 <strong>内存布局</strong> (Memory Layout)。一种典型的程序相对内存布局如下：</p>
 <img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/MemoryLayout.png" alt="内存布局" style="zoom:33%;" />
 
 <p>代码部分只有代码段 <code>.text</code> 一个段，存放程序的所有汇编代码。</p>
 <p>数据部分则还可以继续细化：</p>
 <ul>
-<li>已初始化数据段保存程序中那些已初始化的全局数据，分为 <code>.rodata</code> 和 <code>.data</code> 两部分。前者存放只读的全局数据，通常是一些常数或者是 常量字符串等；而后者存放可修改的全局数据。</li>
+<li>已初始化数据段保存程序中那些已初始化的全局数据，分为 <code>.rodata</code> 和 <code>.data</code> 两部分。前者存放只读的全局数据，通常是常数或常量字符串等；而后者存放可修改的全局数据。</li>
 <li>未初始化数据段 <code>.bss</code> 保存程序中那些未初始化的全局数据，通常由程序的加载者代为进行零初始化，也即将这块区域逐字节清零；</li>
-<li><strong>堆</strong> (heap) 区域用来存放程序运行时动态分配的数据，如 C&#x2F;C++ 中的 malloc&#x2F;new 分配到的数据本体就放在堆区域，它向高地址增长；</li>
+<li><strong>堆</strong> (heap) 区域用来存放程序运行时动态分配的数据，如 C&#x2F;C++ 中的 <code>malloc</code>&#x2F;<code>new</code> 分配到的数据本体就放在堆区域，它向高地址增长；</li>
 <li>栈区域 stack 不仅用作函数调用上下文的保存与恢复，每个函数作用域内的局部变量也被编译器放在它的栈帧内。它向低地址增长。</li>
 </ul>
-<p>对于堆上的动态变量，其本体被保存在堆上，大小在运行时才能确定。而我们只能 <em>直接</em> 访问栈上或者全局数据段中的 <strong>编译期确定大小</strong> 的变量。 因此我们需要通过一个运行时分配内存得到的一个指向堆上数据的指针来访问它，指针的位宽确实在编译期就能够确定。该指针即可以作为局部变量 放在栈帧里面，也可以作为全局变量放在全局数据段中。</p>
-<hr>
+<p>对于堆上的动态变量，其本体被保存在堆上，大小在<strong>运行时</strong>才能确定。而我们只能直接访问栈上或者全局数据段中的<strong>编译期确定大小</strong>的变量。 因此，我们需要通过一个（运行时分配内存得到的）指向堆上数据的指针来访问它。指针的位宽确实在编译期就能够确定。该指针即可以作为局部变量放在栈帧内，也可以作为全局变量放在全局数据段中。</p>
 <h2 id="ch2-批处理系统"><a href="#ch2-批处理系统" class="headerlink" title="ch2 批处理系统"></a>ch2 批处理系统</h2><p>chap2实现应用程序一部分，在OS启动时执行了<code>clear_bss()</code>函数，关于BSS的功能，参考<a target="_blank" rel="noopener" href="https://blog.csdn.net/sgc_bf/article/details/101227860">静态存储区（Bss、数据段、代码段），堆，栈-CSDN博客</a>.</p>
 <figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="meta">#[link_section = <span class="string">&quot;.text.entry&quot;</span>]</span></span><br><span class="line"><span class="keyword">pub</span> <span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> <span class="keyword">fn</span> <span class="title function_">_start</span>() <span class="punctuation">-&gt;</span> ! &#123;</span><br><span class="line">    <span class="title function_ invoke__">clear_bss</span>();</span><br><span class="line">    <span class="title function_ invoke__">exit</span>(<span class="title function_ invoke__">main</span>());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
