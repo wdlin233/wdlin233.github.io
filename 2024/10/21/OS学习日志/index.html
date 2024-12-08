@@ -35,7 +35,7 @@
 <meta property="og:image" content="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/EnvironmentCallFlow.png">
 <meta property="og:image" content="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/context-switch.png">
 <meta property="article:published_time" content="2024-10-21T12:38:17.000Z">
-<meta property="article:modified_time" content="2024-12-06T03:17:41.728Z">
+<meta property="article:modified_time" content="2024-12-08T09:27:47.396Z">
 <meta property="article:author" content="wdlin233">
 <meta property="article:tag" content="OS">
 <meta name="twitter:card" content="summary">
@@ -237,7 +237,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2024-12-06 11:17:41" itemprop="dateModified" datetime="2024-12-06T11:17:41+08:00">2024-12-06</time>
+      <time title="修改时间：2024-12-08 17:27:47" itemprop="dateModified" datetime="2024-12-08T17:27:47+08:00">2024-12-08</time>
     </span>
 
   
@@ -254,14 +254,14 @@
         <i class="far fa-file-word"></i>
       </span>
       <span class="post-meta-item-text">本文字数：</span>
-      <span>22k</span>
+      <span>25k</span>
     </span>
     <span class="post-meta-item" title="阅读时长">
       <span class="post-meta-item-icon">
         <i class="far fa-clock"></i>
       </span>
       <span class="post-meta-item-text">阅读时长 &asymp;</span>
-      <span>39 分钟</span>
+      <span>45 分钟</span>
     </span>
 </div>
 
@@ -561,29 +561,47 @@
 <p>执行和测试应用程序：在rCore-v3文档中，在实现操作系统前，直接执行和测试了应用程序，这是基于QEMU的用户态模拟<code>User mode</code>. 因为<code>system mode</code>模拟整个machine，可以运行其上的guest OS；而<code>user mode</code>是在host上运行一个guest的程序. </p>
 <p>参考 <a target="_blank" rel="noopener" href="https://wangzhou.github.io/qemu-user-mode%E9%80%9F%E8%AE%B0/">qemu user mode速记 | Sherlock’s blog</a>.</p>
 </blockquote>
-<h3 id="批处理系统实现"><a href="#批处理系统实现" class="headerlink" title="批处理系统实现"></a>批处理系统实现</h3><p>chap2实现批处理操作系统一部分，对<code>link_app.S</code>的汇编代码，可以理解为<code>_num_app</code>这一全局符号指向了一个数组，一个表示应用程序数量，三个表示每个应用程序的开始地址，一个表示最后一个应用程序的结束地址。</p>
-<p>汇编中的常用伪指令：</p>
-<p><strong><code>.section</code></strong>:</p>
-<ul>
-<li>指定接下来的代码或数据属于哪一节（段）。常见的数据段有 <code>.text</code>（代码段）、<code>.data</code>（数据段）、<code>.bss</code>（未初始化数据段）等。</li>
-</ul>
-<p><strong><code>.align</code></strong>:</p>
-<ul>
-<li>用于指定数据的对齐。譬如，<code>.align 3</code> 会将接下来的数据对齐到 2^3&#x3D;8 字节的边界。</li>
-</ul>
-<p><strong><code>.global</code></strong> 或 <strong><code>.globl</code></strong>:</p>
-<ul>
-<li>用于声明符号为全局符号，使其在其他文件中可见。</li>
-</ul>
-<p><strong><code>.quad</code></strong>:</p>
-<ul>
-<li>用于分配并初始化一个 64-bit（8字节）数据。类似的指令有 <code>.byte</code>、<code>.word</code>、<code>.long</code> 等，用于分配其他大小的数据。</li>
-</ul>
-<p><strong><code>.incbin</code></strong>:</p>
-<ul>
-<li>包含一个外部二进制文件的内容，并将其嵌入到当前字节流中。这在需要将预编译的二进制文件直接打包到程序中的情况下非常有用。</li>
-</ul>
-<p>在初始化<code>AppManager</code>的代码中，<code>UPSafeCell</code>获取内部对象的可变引用，拥有内部可变性。<code>lazy_static!</code> 宏提供了全局变量的运行时初始化功能。对于有些全局变量，其初始化依赖于运行期间才能得到的数据。 此处声明了一个 <code>AppManager</code> 结构的名为 <code>APP_MANAGER</code> 的全局实例， 只有在它第一次被使用到的时候才会进行实际的初始化工作。</p>
+<h3 id="批处理系统实现"><a href="#批处理系统实现" class="headerlink" title="批处理系统实现"></a>批处理系统实现</h3><p>我们需要将应用程序链接到内核，即将应用程序的二进制镜像文件作为内核的数据段链接到内核内，因此内核需要知道内含的应用程序的数量和它们的位置，实现运行时的管理并能够加载到物理内存。</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// os/src/main.rs</span></span><br><span class="line">core::arch::global_asm!(<span class="built_in">include_str!</span>(<span class="string">&quot;entry.asm&quot;</span>));</span><br><span class="line">core::arch::global_asm!(<span class="built_in">include_str!</span>(<span class="string">&quot;link_app.S&quot;</span>));</span><br></pre></td></tr></table></figure>
+
+<p>汇编代码 <code>link_app.S</code> 一开始并不存在，而是在<code>make run</code>构建的时候自动生成的.</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"># os/src/link_app.S</span><br><span class="line"></span><br><span class="line">    .align 3</span><br><span class="line">    .section .data</span><br><span class="line">    .global _num_app</span><br><span class="line">_num_app:</span><br><span class="line">    .quad 3</span><br><span class="line">    .quad app_0_start</span><br><span class="line">    .quad app_1_start</span><br><span class="line">    .quad app_2_start</span><br><span class="line">    .quad app_2_end</span><br><span class="line"></span><br><span class="line">    .section .data</span><br><span class="line">    .global app_0_start</span><br><span class="line">    .global app_0_end</span><br><span class="line">app_0_start:</span><br><span class="line">    .incbin &quot;../user/target/riscv64gc-unknown-none-elf/release/00hello_world.bin&quot;</span><br><span class="line">app_0_end:</span><br><span class="line"></span><br><span class="line">    .section .data</span><br><span class="line">    .global app_1_start</span><br><span class="line">    .global app_1_end</span><br><span class="line">app_1_start:</span><br><span class="line">    .incbin &quot;../user/target/riscv64gc-unknown-none-elf/release/01store_fault.bin&quot;</span><br><span class="line">app_1_end:</span><br><span class="line"></span><br><span class="line">    .section .data</span><br><span class="line">    .global app_2_start</span><br><span class="line">    .global app_2_end</span><br><span class="line">app_2_start:</span><br><span class="line">    .incbin &quot;../user/target/riscv64gc-unknown-none-elf/release/02power.bin&quot;</span><br><span class="line">app_2_end:</span><br></pre></td></tr></table></figure>
+
+<p>在<code>.section</code>指定接下来的数据属于<code>.data</code>（数据段）后，<code>.global</code>声明符号为全局符号，使其在其他文件中可见。</p>
+<p><code>.align</code>用于指定数据的对齐，<code>.align 3</code> 将接下来的数据对齐到 2 ^ 3 &#x3D; 8 字节的边界，因为<code>_num_app</code> 和随后的 <code>app_0_start</code>、<code>app_1_start</code>、<code>app_2_start</code> 等符号是以 <code>quad</code> 进行定义的，<code>.quad</code>分配并初始化一个 64-bit（8字节）数据。在 64 位系统中实现内存对齐到 8 字节边界。 </p>
+<p><code>.incbin</code>包含一个外部二进制文件的内容，并将其嵌入到当前字节流中。这在需要将预编译的二进制文件直接打包到程序中的情况下非常有用。</p>
+<p>其中<code>_num_app</code>段相当于一个64位整数数组，第一个元素表示应用程序数量，之后是各个应用的起始地址，最后是最后一个程序的结束位置，这样应用程序的位置都能从该数组中相邻两个元素中得知。</p>
+<blockquote>
+<p>Q：<code>.data</code>段是连续的吗？</p>
+<p>A：每个应用程序的数据部分没有显式地分配新的段（即没有使用 <code>.section</code> 和 <code>.text</code> 之间的切换），故它们的内存分布是 <strong>连续的</strong>。事实上，多个 <code>.section .data</code> 和 <code>.global</code> 指令只是在一个单一的数据段内逐个声明不同的符号，因此它们共享同一个数据段，它们之间的数据是 <strong>按顺序排列</strong> 的。</p>
+</blockquote>
+<hr>
+<p>由此我们可以在Rust中实现应用加载.</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">AppManager</span> &#123;</span><br><span class="line">    num_app: <span class="type">usize</span>,</span><br><span class="line">    current_app: <span class="type">usize</span>,</span><br><span class="line">    app_start: [<span class="type">usize</span>; MAX_APP_NUM + <span class="number">1</span>],</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>初始化 <code>AppManager</code> 的全局实例.</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">lazy_static! &#123;</span><br><span class="line">    <span class="keyword">static</span> <span class="keyword">ref</span> APP_MANAGER: UPSafeCell&lt;AppManager&gt; = <span class="keyword">unsafe</span> &#123;</span><br><span class="line">        UPSafeCell::<span class="title function_ invoke__">new</span>(&#123;</span><br><span class="line">            <span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> &#123;</span><br><span class="line">                <span class="keyword">fn</span> <span class="title function_">_num_app</span>();</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">let</span> <span class="variable">num_app_ptr</span> = _num_app <span class="keyword">as</span> <span class="type">usize</span> <span class="keyword">as</span> *<span class="keyword">const</span> <span class="type">usize</span>;</span><br><span class="line">            <span class="keyword">let</span> <span class="variable">num_app</span> = num_app_ptr.<span class="title function_ invoke__">read_volatile</span>();</span><br><span class="line">            <span class="keyword">let</span> <span class="keyword">mut </span><span class="variable">app_start</span>: [<span class="type">usize</span>; MAX_APP_NUM + <span class="number">1</span>] = [<span class="number">0</span>; MAX_APP_NUM + <span class="number">1</span>];</span><br><span class="line">            <span class="keyword">let</span> <span class="variable">app_start_raw</span>: &amp;[<span class="type">usize</span>] =</span><br><span class="line">                core::slice::<span class="title function_ invoke__">from_raw_parts</span>(num_app_ptr.<span class="title function_ invoke__">add</span>(<span class="number">1</span>), num_app + <span class="number">1</span>);</span><br><span class="line">            app_start[..=num_app].<span class="title function_ invoke__">copy_from_slice</span>(app_start_raw);</span><br><span class="line">            AppManager &#123;</span><br><span class="line">                num_app,</span><br><span class="line">                current_app: <span class="number">0</span>,</span><br><span class="line">                app_start,</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;)</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在初始化<code>AppManager</code>的代码中，<code>UPSafeCell</code>获取内部对象的可变引用，拥有<strong>内部可变性</strong>。在 rCore-v3 中，这通过<code>RefCell&lt;AppManagerInner&gt;</code>而实现，<code>APP_MANAGER: AppManager = AppManager&#123;...&#125;</code>.</p>
+<p>对于有些全局变量，其初始化依赖于运行期间才能得到的数据。 此处声明了一个 <code>AppManager</code> 结构的名为 <code>APP_MANAGER</code> 的全局实例， 只有在它第一次被使用到的时候才会进行实际的初始化工作。</p>
+<p>初始化的逻辑很简单，就是找到 <code>link_app.S</code> 中提供的符号 <code>_num_app</code> ，并从这里开始解析出应用数量以及各个应用的开头地址。对 <code>app_start[..=num_app]</code>一句，<code>..=num_app</code> 是一个<strong>范围表达式</strong>，表示索引从 <code>0</code> 到 <code>num_app</code>（包含 <code>num_app</code>）.</p>
+<blockquote>
+<p>Q：何为内部可变性？</p>
+<p>A：内部可变性实现的是，多个可变引用，即持有共享引用的同时还可改变数据。参考<a target="_blank" rel="noopener" href="https://badboi.dev/rust/2020/07/17/cell-refcell.html">Cell, RefCell, and Interior Mutability in Rust | BadBoi.dev</a>, <a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/380419980">内部可变性&#x2F;Interior Mutability in Rust - 知乎</a>.</p>
+<p>rCore-v3 解释说：所谓的内部可变性，即指在我们只能拿到 <code>AppManager</code> 的<strong>不可变借用</strong>，意味着同样也只能 拿到 <code>AppManagerInner</code> 的不可变借用的情况下<strong>依然可以</strong>修改 <code>AppManagerInner</code> 里面的字段。 使用 <code>RefCell::borrow/RefCell::borrow_mut</code> 分别可以拿到 <code>RefCell</code> 里面内容的不可变借用&#x2F;可变借用， <code>RefCell</code> 会在运行时维护当前它管理的对象的已有借用状态，并在访问对象时进行借用检查。于是 <code>RefCell::borrow_mut</code> 就是我们实现内部可变性的关键。</p>
+<p>rCore-v4 解释说：用容器 <code>UPSafeCell</code> 包裹 <code>AppManager</code> 是为了防止全局对象 <code>APP_MANAGER</code> 被重复获取。<code>UPSafeCell</code> 实现在 <code>sync</code> 模块中，调用 <code>exclusive_access</code> 方法能获取其<strong>内部对象的可变引用</strong>， 如果程序运行中同时存在多个这样的引用，会触发 <code>already borrowed: BorrowMutError</code>，<code>UPSafeCell</code> 既提供了内部可变性，又在单核情境下防止了内部对象被重复借用，我们将在后文中多次见到它。</p>
+</blockquote>
+<blockquote>
+<p>Q：为什么需要<code>copy_from_slice</code>?</p>
+<p>A：因为<code>from_raw_parts</code>获得的切片只是对某一段数据的引用，它并不拥有数据，也不负责管理数据的内存。如果只是创建了切片并希望直接操作目标数组，这在 Rust 中是不允许的，因为切片并不拥有数据，只是一个<em>视图</em>。</p>
+</blockquote>
+<p>这里我们使用了外部库 <code>lazy_static</code> 提供的 <code>lazy_static!</code> 宏。要引入这个外部库，我们需要加入依赖：</p>
+<figure class="highlight toml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># os/Cargo.toml</span></span><br><span class="line"><span class="section">[dependencies]</span></span><br><span class="line"><span class="attr">lazy_static</span> = &#123; version = <span class="string">&quot;1.4.0&quot;</span>, features = [<span class="string">&quot;spin_no_std&quot;</span>] &#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>一般情况下，全局变量必须在编译期设置一个初始值，但是有些全局变量依赖于运行期间才能得到的数据作为初始值。这导致这些全局变量需要在运行时发生变化，也即重新设置初始值之后才能使用。</p>
+<p> <code>lazy_static!</code> 宏提供了全局变量的运行时初始化功能。借助 Rust 核心库提供的 <code>RefCell</code> 和外部库 <code>lazy_static!</code>，我们就能在避免 <code>static mut</code> 声明的情况下以更加优雅的Rust风格使用全局变量。</p>
+</blockquote>
 <p>CPU的L1 Cache分为数据缓存(d-cache)和指令缓存(i-cache)，二者的大概介绍<a target="_blank" rel="noopener" href="https://blog.csdn.net/chenhuanqiangnihao/article/details/128312905">CPU一级缓存L1 D-cache\L1 I-cache-CSDN博客</a>. 二者分别用来存放，数据和执行这些数据的指令，而且两者可以同时被CPU访问，减少了争用Cache所造成的冲突，提高了CPU效能。代码中我们使用汇编指令 <code>fence.i</code> 清理 i-cache.</p>
 <h4 id="2024-10-22"><a href="#2024-10-22" class="headerlink" title="2024&#x2F;10&#x2F;22"></a>2024&#x2F;10&#x2F;22</h4><p>在RISC-V体系架构中，异常和中断的过程被统称为trap。广义的来说，中断也属于异常的一部分；不管发生异常或是中断，微处理器的硬件行为是一致的，<strong>微处理器暂停当前程序，转向异常或中断处理程序，处理完成后返回之前暂停的程序。</strong></p>
 <p>关于触发异常<code>Trap</code>的情况:</p>
@@ -719,13 +737,13 @@
     <span class="post-meta-item-icon">
       <i class="fa fa-chart-line"></i>
     </span>
-    <span title="站点总字数">56k</span>
+    <span title="站点总字数">59k</span>
   </span>
   <span class="post-meta-item">
     <span class="post-meta-item-icon">
       <i class="fa fa-coffee"></i>
     </span>
-    <span title="站点阅读时长">1:42</span>
+    <span title="站点阅读时长">1:47</span>
   </span>
 </div>
 <div class="busuanzi-count">
