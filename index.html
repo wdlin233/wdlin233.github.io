@@ -329,7 +329,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2024-12-12 21:04:15" itemprop="dateModified" datetime="2024-12-12T21:04:15+08:00">2024-12-12</time>
+      <time title="修改时间：2024-12-15 22:08:46" itemprop="dateModified" datetime="2024-12-15T22:08:46+08:00">2024-12-15</time>
     </span>
 
   
@@ -339,14 +339,14 @@
         <i class="far fa-file-word"></i>
       </span>
       <span class="post-meta-item-text">本文字数：</span>
-      <span>28k</span>
+      <span>33k</span>
     </span>
     <span class="post-meta-item" title="阅读时长">
       <span class="post-meta-item-icon">
         <i class="far fa-clock"></i>
       </span>
       <span class="post-meta-item-text">阅读时长 &asymp;</span>
-      <span>52 分钟</span>
+      <span>1:01</span>
     </span>
 </div>
 
@@ -357,10 +357,7 @@
     
     
     <div class="post-body" itemprop="articleBody">
-          <blockquote>
-<p>文档建设中…</p>
-</blockquote>
-<h2 id="ch1-基本环境"><a href="#ch1-基本环境" class="headerlink" title="ch1 基本环境"></a>ch1 基本环境</h2><h3 id="用户态执行环境"><a href="#用户态执行环境" class="headerlink" title="用户态执行环境"></a>用户态执行环境</h3><p>我们发现Rust编译器要找的入口函数是 <code>_start()</code> ，于是我们可以在 <code>main.rs</code> 中添加如下内容.</p>
+          <h2 id="ch1-基本环境"><a href="#ch1-基本环境" class="headerlink" title="ch1 基本环境"></a>ch1 基本环境</h2><h3 id="用户态执行环境"><a href="#用户态执行环境" class="headerlink" title="用户态执行环境"></a>用户态执行环境</h3><p>我们发现Rust编译器要找的入口函数是 <code>_start()</code> ，于是我们可以在 <code>main.rs</code> 中添加如下内容.</p>
 <figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// os/src/main.rs</span></span><br><span class="line"><span class="meta">#[no_mangle]</span></span><br><span class="line"><span class="keyword">extern</span> <span class="string">&quot;C&quot;</span> <span class="keyword">fn</span> <span class="title function_">_start</span>() &#123;</span><br><span class="line">    <span class="keyword">loop</span>&#123;&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p>但是</p>
@@ -600,13 +597,13 @@
     <span class="post-meta-item-icon">
       <i class="fa fa-chart-line"></i>
     </span>
-    <span title="站点总字数">63k</span>
+    <span title="站点总字数">68k</span>
   </span>
   <span class="post-meta-item">
     <span class="post-meta-item-icon">
       <i class="fa fa-coffee"></i>
     </span>
-    <span title="站点阅读时长">1:54</span>
+    <span title="站点阅读时长">2:03</span>
   </span>
 </div>
 <div class="busuanzi-count">
