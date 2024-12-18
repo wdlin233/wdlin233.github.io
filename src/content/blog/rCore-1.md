@@ -1234,7 +1234,7 @@ pub fn load_apps() {
 
 某个应用程序运行结束或出错时，调用 run_next_app 切换到下一个应用程序。特权级由 S 切换至 U. 与上章的 [执行应用程序](https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/chapter2/4trap-handling.html#ch2-app-execution) 一节描述类似，相对不同的是，操作系统需要设置应用程序返回的不同 Trap 上下文。
 
-### 任务切换
+### 任务切换 __switch
 
 我们将实现**任务切换**，任务切换支持的场景是：一个应用在运行途中便会**主动**交出 CPU 的使用权，此时它只能暂停执行，等到内核重新给它分配处理器资源之后才能恢复并继续执行。
 
@@ -1355,7 +1355,7 @@ extern "C" {
 
 `__switch`调用ref在`TaskManager`中.
 
-### 管理多道程序
+### 管理多道程序 TaskManager
 
 内核同时管理多个应用，如果外设处理的时间足够长，就先进行任务切换去执行其他应用，保证 CPU 不必浪费时间在等待外设上，而是几乎一直在进行计算。通过应用进行 `sys_yield` 系统调用来实现，这意味着它主动交出 CPU 的使用权给其他应用。
 
@@ -1366,12 +1366,162 @@ extern "C" {
 pub struct TaskControlBlock {
     /// The task status in it's lifecycle
     pub task_status: TaskStatus,
-    /// The task context
     pub task_cx: TaskContext,
-    /// The number of system calls called by the task.
     pub syscall_times: [u32; MAX_SYSCALL_NUM],
-    /// The total running time of the task
     pub total_time: usize,
 }
 ```
 
+> 通过 `#[derive(...)]` 可以让编译器为你的类型提供一些 Trait 的默认实现。
+
+内核需要一个全局的任务管理器来管理这些任务控制块.
+
+```rust
+// os/src/task/mod.rs
+pub struct TaskManager {
+    num_app: usize,
+    /// use inner value to get mutable access
+    inner: UPSafeCell<TaskManagerInner>,
+}
+
+/// Inner of Task Manager
+pub struct TaskManagerInner {
+    tasks: [TaskControlBlock; MAX_APP_NUM],
+    /// id of current `Running` task
+    current_task: usize,
+}
+```
+
+然后用`lazy_static!`创建全局实例`TASK_MANAGER`即可.
+
+`sys_yield`和`sys_exit`实现程序的主动暂停和主动退出，实现很简单，这里不讲了。
+
+<img src="https://learningos.cn/rCore-Camp-Guide-2024A/_images/fsm-coop.png" style="zoom:67%;" />
+
+当 CPU 第一次从内核态进入用户态时，进行**初始化**工作.
+
+```rust
+// os/src/task/mod.rs
+...TASK_MANAGER: TaskManager= {	
+	for (i, task) in tasks.iter_mut().enumerate() {
+            task.task_cx = TaskContext::goto_restore(init_app_cx(i));
+            task.task_status = TaskStatus::Ready;
+	}
+}
+```
+
+`init_app_cx` 在 `loader` 子模块中定义，向内核栈压入了一个 Trap 上下文，并返回压入 Trap 上下文后 `sp` 的值。 
+
+`goto_restore` 保存传入的 `sp`，并将 `ra` 设置为 `__restore` 的入口地址，构造任务上下文后返回。这样，任务管理器中各个应用的任务上下文就得到了初始化。
+
+```rust
+// os/src/task/context.rs
+impl TaskContext {
+    /// Create a new task context with a trap return addr and a kernel stack pointer
+    pub fn goto_restore(kstack_ptr: usize) -> Self {
+        extern "C" {
+            fn __restore();
+        }
+        Self {
+            ra: __restore as usize,
+            sp: kstack_ptr,
+            s: [0; 12],
+        }
+    }
+}
+```
+
+`ra: __restore as usize`通过将 `__restore` 函数的**地址**赋值给 `ra`，任务恢复时，CPU 会跳转到 `__restore` 函数，执行上下文恢复操作。这样，任务管理器中各个应用的任务上下文就得到了初始化。
+
+> Q: 为何能如此做？
+>
+> A: 在 Rust 中，函数名本身是一个 **函数指针**，代表函数的起始地址。此处`ra`作为跳转的起始点，CPU 恢复上下文后，通过 `ret` 指令**跳转到 `ra` 指定的地址**，即 `__restore`.
+
+```rust
+// os/src/task/mod.rs
+impl TaskManager {
+	fn run_first_task(&self) -> ! {
+        let mut inner = self.inner.exclusive_access();
+        let task0 = &mut inner.tasks[0];
+        task0.task_status = TaskStatus::Running;
+        task0.total_time = get_time_ms();
+        let next_task_cx_ptr = &task0.task_cx as *const TaskContext;
+        drop(inner);
+        let mut _unused = TaskContext::zero_init();
+        // before this, we should drop local variables that must be dropped manually
+        unsafe {
+            __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
+        }
+        panic!("unreachable in run_first_task!");
+    }
+}
+```
+
+`__switch` 第一个参数用于记录当前应用的任务上下文被保存在哪里，也就是当前应用内核栈的栈顶。我们显式声明了一个 `_unused` 变量，保存一些寄存器之后的 启动栈 栈顶的位置将会保存在此变量中。
+
+这里声明此变量的意义仅仅是为了避免覆盖到其他数据，因为无论是此变量还是 启动栈 我们之后均不会涉及到，一旦应用开始运行，我们就开始在应用的用户栈和内核栈之间开始切换了。
+
+### 分时多任务系统
+
+现代的任务调度算法基本都是抢占式(Preemptive Scheduling)的，它要求每个应用只能连续执行一段时间，然后内核就会将它强制性切换出去。 一般将 **时间片** (Time Slice) 作为应用连续执行时长的度量单位，我们使用 **时间片轮转算法** (RR, Round-Robin) 来对应用进行调度。
+
+**中断** (Interrupt) 和用于系统调用的 **陷入** `Trap` 一样都是异常 ，但是它们被触发的原因确是不同的。对于某个处理器核而言， 陷入与发起 陷入的指令执行是 **同步** (Synchronous) 的， 陷入被触发的原因一定能够追溯到某条指令的执行；而中断则**异步** (Asynchronous) 于当前正在进行的指令，也就是说中断来自于哪个外设以及中断如何触发完全与处理器正在执行的当前指令无关。可见[RISC-V 中断一览表](https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/chapter3/4time-sharing-system.html#id8).
+
+RISC-V 要求处理器维护时钟计数器 `mtime`，还有另外一个 CSR `mtimecmp` 。 一旦计数器 `mtime` 的值超过了 `mtimecmp`，就会触发一次时钟中断。
+
+```rust
+// os/src/timer.rs
+use riscv::register::time;
+/// Get the current time in ticks
+pub fn get_time() -> usize {
+    time::read()
+}
+```
+
+运行在 M 特权级的 SEE 已经预留了相应的接口，基于此编写的 `get_time` 函数可以取得当前 `mtime` 计数器的值。
+
+```rust
+// os/src/timer.rs
+/// Set the next timer interrupt
+pub fn set_next_trigger() {
+    set_timer(get_time() + CLOCK_FREQ / TICKS_PER_SEC);
+}
+```
+
+此处，会每 10ms 触发一个 S 特权级时钟中断.
+
+获取当前时间的系统调用`sys_get_time`在 syscall/process.rs 中，`TimeVal`也实现在此处.
+
+```rust
+// os/src/trap/mod.rs
+pub fn trap_hander(...) {
+    match scause.cause() {
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            set_next_trigger();
+            suspend_current_and_run_next();
+        }
+    }
+}
+```
+
+触发了一个 S 特权级时钟中断的时候，首先用`set_next_trigger`重新设置一个 10ms 的计时器，再调用`suspend_current_and_run_next`.
+
+```rust
+// os/src/main.rs
+pub fn rust_main() -> ! {
+	// ...
+    trap::enable_timer_interrupt();
+    timer::set_next_trigger();
+	// ...
+}
+```
+
+在`main.rs`中需要相应的初始化。
+
+<img src="https://i-blog.csdnimg.cn/blog_migrate/bfd6cc9edb52ec28989b28f4dd2435bf.png" style="zoom:67%;" />
+
+`sstatus` 的 `sie` 为 S 特权级的中断使能，能够同时控制三种中断。
+
+由于应用运行在 U 特权级，且 `sie` 寄存器被正确设置，该中断不会被屏蔽，而是 Trap 到 S 特权级内的我们的 `trap_handler` 里面进行处理，并顺利切换到下一个应用。
+
+在某些时候，我们仍需要`yield`来节约 CPU 资源和满足事件生成条件。例如，我们可以通过 yield 来优化 轮询 (Busy Loop) 过程带来的 CPU 资源浪费。
