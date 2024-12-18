@@ -975,11 +975,13 @@ __alltraps:
 
 以下对该汇编代码进行解释：
 
+<a id="assembly"></a>
+
 `csrrw rd, csr, rs1`，作用是将来自寄存器 `rs1` 的值写入控制和状态寄存器（CSR），并将CSR的旧值读入寄存器 `rd`.  因此这里起到的是**交换**` sscratch` 和` sp` 的效果。在这一行之前 `sp` 指向用户栈， `sscratch` 指向内核栈，现在 `sp` 指向内核栈， `sscratch` 指向用户栈。
 
 `addi sp, sp, -34*8`用于预先分配栈帧（内核栈），将`sp`的值与`-34*8`相加后存入`sp`. **准备在内核栈上保存 Trap 上下文.**
 
-`sd rs2, offset(rs1)`，**保存 Trap 上下文的通用寄存器 x0~x31**. `sd` 指令的目的是将 `rs2` 寄存器中的64位数据存入由 `rs1` 中的地址加上 `offset` 计算得到的内存地址.  此处按照 `TrapContext` 结构体的内存布局，基于内核栈的位置（sp所指地址）来从低地址到高地址分别按顺序放置 x0~x31 这些通用寄存器.
+`sd rs2, offset(rs1)`，**保存 Trap 上下文的通用寄存器 x0~x31**. Store Doubleword. 将 `rs2` 中的数据存储到地址 `rs1 + offset` 指向的内存位置.  此处按照 `TrapContext` 结构体的内存布局，基于内核栈的位置（sp所指地址）来从低地址到高地址分别按顺序放置 x0~x31 这些通用寄存器.
 
 最后是 `sstatus` 和 `sepc` .  通用寄存器 xn 应该被保存在地址区间 `[sp+8n,sp+8(n+1))` . 
 
@@ -1240,68 +1242,136 @@ pub fn load_apps() {
 
 一条执行流需要支持“暂停-继续”，必然需要一种执行流切换的机制，而且需要保证执行流状态切换前后，即执行过程中同步变化的资源（如寄存器、栈等）需要**保持不变**，或者变化在它的预期之内。并非所有的资源都需要被保存，只有执行过程中仍然有用，且有被覆盖的危险的资源才需要。这些物理资源被称为 **任务上下文 (Task Context)** .
 
-> 以下文档建设中
-
-#### 2024/10/26
-
-于是开始重读rCore-v3.
-
-##### 异常控制流
-
-应用程序在执行过程中，如果出现外设中断或 CPU 异常，处理器执行的前一条指令和后一条指令会位于两个完全不同的位置，即不同的执行环境 。比如，前一条指令还在应用程序的代码段中，后一条指令就跑到操作系统的代码段中去了，这就是一种控制流的“突变”，即控制流脱离了其所在的执行环境，并产生 [执行环境的切换](https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/chapter0/3os-hw-abstract.html#term-ee-switch)。
-
-**异常控制流** (ECF, Exceptional Control Flow) 是处理器在执行过程中的突变，其主要作用是通过硬件和操作系统的协同工作来响应处理器状态中的特殊变化。比如当应用程序正在执行时，产生了时钟外设中断，导致操作系统打断当前应用程序的执行，转而进入 **操作系统** 所在的执行环境去处理时钟外设中断。处理完毕后，再回到应用程序的执行环境中被打断的地方继续执行。
-
-##### 上下文
-
-这里我们把控制流在执行完某指令时的物理资源内容，即确保下一时刻能继续 *正确* 执行控制流指令的物理资源内容称为控制流的 **上下文** (Context) ，也可称为控制流所在执行环境的状态。
-
-这里需要理解控制流的上下文对控制流的 *正确* 执行的影响。如果在某时刻，由于某种有意或无意的原因，控制流的上下文发生了不是由于控制流本身的指令产生的变化，并使得控制流执行接下来的指令序列时出现了偏差，并最终导致执行过程或执行结果不符合预期，这种情形称为没有正确执行。 所以，我们这里说的控制流的上下文是指仅会影响控制流**正确执行**的有限的物理资源内容。
-
-随着CPU的执行，各种前缀的上下文（执行环境的状态）会在不断的变化。
-
-如果出现了处理器在执行过程中的突变（即异常控制流）或转移（如多层函数调用），需要由维持执行环境的软硬件协同起来，**保存**发生突变或转移前的当前的执行环境的状态（比如突变或函数调用前一刻的指令寄存器，栈寄存器和其他一些通用寄存器等内容），并在完成突变处理或被调用函数后，**恢复**突变或转移前的执行环境的状态。这是由于完成与突变相关的执行会破坏突变前的执行环境状态（比如上述各种寄存器的内容），导致如果不保存状态，就无法恢复到突变前执行环境，继续正常的普通控制流的执行。
-
-对于异常控制流的上下文保存与恢复，主要是通过 CPU 和操作系统（手动编写在栈上保存与恢复寄存器的指令）来协同完成；对于函数转移控制流的上下文保存与恢复，主要是通过编译器（自动生成在栈上保存与恢复寄存器的指令）来帮助完成的。
-
-在操作系统中，需要处理三类异常控制流：**外设中断** (Device Interrupt) 、**陷入** (Trap) 和**异常** (Exception，也称Fault Interrupt)。
-
-> Q: 应用程序也有其上下文吗？
->
-> A: 如果一个控制流是属于某个应用程序的，那么这个控制流的上下文简称为应用程序上下文。
-
-从开始到结束的整个执行过程中，截取其中一个时间段，在这个时间段中，它所执行的指令流形成了这个时间段的控制流，而控制流中的每条执行的指令和它执行后的上下文，形成由二元组<指令指针，上下文>（<pc，context>）构成的有序序列，我们用 **执行流** (Execution Flow) 或 **执行历史** (Execution History) 来表示这个二元组有序序列。
-
-- 外设 **中断** (Interrupt) 由外部设备引起的外部 I/O 事件如时钟中断、控制台中断等。外设中断是异步产生的，与处理器的执行无关。
-- **异常** (Exception) 是在处理器执行指令期间检测到不正常的或非法的内部事件（如除零错、地址访问越界）。
-- **陷入** (Trap) 是在程序中使用请求操作系统服务的系统调用而引发的有意事件。
-
-> 在RISC-V的特权级规范文档中，“陷入” 包含中断和异常，而原来意义上的陷入(trap，系统调用)只是exception中的一种情况。另外还有一种 “软件中断” ，它是指软件可以通过写特定寄存器（mip/sip）的特定位（MSIP/SSIP/USIP）来产生的中断。而异常和中断有严格的区分，在记录产生的异常或中断类型的特定寄存器（mcause/scause）中，寄存器最高位为 `0` 表示异常，最高位为 `1` 表示中断。进一步的详细信息可以可参考RISC-V的特权级规范文档和后面的章节。
-
-##### 进程
-
-为了提高处理器的利用率，操作系统需要让处理器足够忙，即让不同的程序轮流占用处理器来运行。如果一个程序因某个事件而不能运行下去时，就通过进程上下文切换把处理器占用权转交给另一个可运行程序。进程上下文切换如下图所示：
-
-<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/context-switch.png" alt="进程上下文切换" style="zoom:33%;" />
-
-一个进程是一个具有一定独立功能的程序在一个数据集合上的一次动态执行过程。 操作系统中的进程管理需要采用某种调度策略将处理器资源分配给程序并在适当的时候回收，并且要尽可能充分利用处理器的硬件资源。
-
-***
-
-
-
-#### 
-
-与第二章相同，所有应用的 ELF 都经过 strip 丢掉所有 ELF header 和符号变为二进制镜像文件，随后以同样的格式通过 `link_user.S` 在编译的时候直接链接到内核的数据段中。不同的是，我们对相关模块进行了调整：在第二章中应用的加载和进度控制都交给 `batch` 子模块，而在第三章中我们将应用的加载这部分功能分离出来在 `loader` 子模块中实现，应用的执行和切换则交给 `task` 子模块。
-
-关于ELF，可以参考[ELF文件详解—初步认识_.elf-CSDN博客](https://blog.csdn.net/daide2012/article/details/73065204).
-
-但此处的任务切换与批处理的Trap切换有所不同，本节的任务切换的执行过程是第二章的 Trap 之后的另一种异常控制流，都是描述两条执行流之间的切换，如果将它和 Trap 切换进行比较，会有如下异同：
+任务切换的执行过程，是第二章的 Trap 之后的另一种异常控制流，都是描述两条执行流之间的切换，但会有如下异同：
 
 - 与 Trap 切换不同，它不涉及特权级切换；
 - 与 Trap 切换不同，它的一部分是由编译器帮忙完成的；
 - 与 Trap 切换相同，它对应用是透明的。
 
-考虑 CPU 只能 *单方面* 通过读取外设提供的寄存器来获取外设请求处理的状态。多道程序的思想在于：内核同时管理多个应用。如果外设处理的时间足够长，那我们可以先进行任务切换去执行其他应用，在某次切换回来之后，应用再次读取设备寄存器，发现请求已经处理完毕了，那么就可以用拿到的完整的数据继续向下执行了。这样的话，只要同时存在的应用足够多，就能保证 CPU 不必浪费时间在等待外设上，而是几乎一直在进行计算。这种任务切换，是通过应用进行一个名为 `sys_yield` 的系统调用来实现的，这意味着它主动交出 CPU 的使用权给其他应用。
+事实上，它是来自两个不同应用的 Trap 执行流之间的切换。调用 `__switch` 之后直到它返回前的这段时间，原 Trap 执行流会先被暂停并被切换出去， CPU 转而运行另一个应用的 Trap 执行流。之后，原 Trap 执行流会从某一条 Trap 执行流（很可能不是之前切换到的那一条）切换回来继续执行，并最终返回。从实现的角度， `__switch` 和一个普通的函数之间的差别仅仅是它会换栈。
 
-一个应用会持续运行下去，直到它主动调用 `sys_yield` 来交出 CPU 使用权。内核将很大的权力下放到应用，让所有的应用互相协作来最终达成最大化 CPU 利用率，充分利用计算资源这一终极目标。在计算机发展的早期，由于应用基本上都是一些简单的计算任务，且程序员都比较遵守规则，因此内核可以信赖应用，这样协作式的制度是没有问题的。
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/task_context.png" alt="Trap Hander1" style="zoom:67%;" />
+
+`__switch`在内核栈上的整体流程为：
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/switch-1.png" style="zoom:67%;" />
+
+阶段 [2]中，A 在自身的内核栈上，分配一块任务上下文的空间，在里面保存 CPU 当前的寄存器快照。
+
+阶段 [3]中，读取 B 的 `task_cx_ptr` 或者说 `task_cx_ptr2` 指向的那块内存，获取到 B 的内核栈栈顶位置，并复制给 `sp` 寄存器来换到 B 的内核栈。**换栈也就实现了执行流的切换** 。
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/switch-2.png" style="zoom:67%;" />
+
+结果上，A 执行流 和 B 执行流的状态发生了互换， A 在保存任务上下文之后进入**暂停**状态，而 B 则**恢复**了**上下文**并在 CPU 上执行。
+
+> Q: 每个任务都具有独立的内核栈吗？
+>
+> A: 是的，为了实现线程、任务或者执行流的切换，通常每个任务（或者执行流）都会拥有一块独立的**内核栈**。这里的 **A** 和 **B** 正是两个不同的任务的**内核栈**，用于保存它们各自的上下文信息。
+
+接下是`__switch`的实现：
+
+```assembly
+# os/src/task/switch.S
+.altmacro
+.macro SAVE_SN n
+    sd s\n, (\n+2)*8(a0)
+.endm
+.macro LOAD_SN n
+    ld s\n, (\n+2)*8(a1)
+.endm
+    .section .text
+    .globl __switch
+__switch:
+    # __switch(
+    #     current_task_cx_ptr: *mut TaskContext,
+    #     next_task_cx_ptr: *const TaskContext
+    # )
+    # save kernel stack of current task
+    sd sp, 8(a0)
+    # save ra & s0~s11 of current execution
+    sd ra, 0(a0)
+    .set n, 0
+    .rept 12
+        SAVE_SN %n
+        .set n, n + 1
+    .endr
+    # restore ra & s0~s11 of next execution
+    ld ra, 0(a1)
+    .set n, 0
+    .rept 12
+        LOAD_SN %n
+        .set n, n + 1
+    .endr
+    # restore kernel stack of next task
+    ld sp, 8(a1)
+    ret
+```
+
+它的两个参数分别是当前和即将被切换到的 Trap 控制流的 `task_cx_ptr`. 分别通过寄存器 `a0/a1` 传入. 内核先把 `current_task_cx_ptr` 中包含的寄存器值逐个保存，再把 `next_task_cx_ptr` 中包含的寄存器值逐个恢复。
+
+汇编语句的解释可以看[这里](#assembly). 对于`ld rd, offset(rs1)`，将内存地址 `rs1 + offset` 处的 8字节数据（64位）加载到寄存器 `rd`. 由[riscv-spec.pdf](https://riscv.org/wp-content/uploads/2024/12/riscv-calling.pdf)，`ra`作为 return address. 寄存器 `a0/a1` 分别作为 Function arguments 和 return values.
+
+> 偏移量是如何定义的？
+
+在任务切换时，通常会将寄存器上下文保存到一个任务上下文结构体中。这个结构体的内存布局可能类似于下面的结构：
+
+| **偏移量** | **保存的寄存器** |
+| ---------- | ---------------- |
+| 0          | `ra`             |
+| 8          | `sp`             |
+| 16         | `s0`             |
+| 24         | `s1`             |
+| ...        | ...              |
+| 104        | `s11`            |
+
+Rust中的实现：
+
+```rust
+// os/src/task/context.rs
+#[repr(C)]
+/// task context structure containing some registers
+pub struct TaskContext {
+    /// Ret position after task switching
+    ra: usize,
+    /// Stack pointer
+    sp: usize,
+    /// s0-11 register, callee saved
+    s: [usize; 12],
+}
+```
+
+```rust
+// os/src/task/switch.rs
+global_asm!(include_str!("switch.S"));
+extern "C" {
+    /// Switch to the context of `next_task_cx_ptr`, saving the current context
+    /// in `current_task_cx_ptr`.
+    pub fn __switch(
+        current_task_cx_ptr: *mut TaskContext, 
+        next_task_cx_ptr: *const TaskContext
+    );
+}
+```
+
+`__switch`调用ref在`TaskManager`中.
+
+### 管理多道程序
+
+内核同时管理多个应用，如果外设处理的时间足够长，就先进行任务切换去执行其他应用，保证 CPU 不必浪费时间在等待外设上，而是几乎一直在进行计算。通过应用进行 `sys_yield` 系统调用来实现，这意味着它主动交出 CPU 的使用权给其他应用。
+
+```rust
+// os/src/task/task.rs
+/// The task control block (TCB) of a task.
+#[derive(Copy, Clone)]
+pub struct TaskControlBlock {
+    /// The task status in it's lifecycle
+    pub task_status: TaskStatus,
+    /// The task context
+    pub task_cx: TaskContext,
+    /// The number of system calls called by the task.
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// The total running time of the task
+    pub total_time: usize,
+}
+```
+
