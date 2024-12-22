@@ -595,7 +595,7 @@ pub fn get_app_data(app_id: usize) -> &'static [u8] {
 }
 ```
 
-> 此处原文档对`from_elf()`进行了讲解，待补充...
+> 此处原文档对`from_elf()`进行了讲解，就是将 `get_app_data` 得到的 ELF 格式数据进行解析，插入各逻辑段，得到一个完整的**应用地址空间**。
 
 #### 内核初始化
 
@@ -667,7 +667,7 @@ impl MemorySet{
 
 在启用分页机制后，对于Trap处理时我们需要修改satp以完成应用/内核地址空间的切换。地址空间的切换不能影响指令的连续执行，即要求应用和内核地址空间在切换地址空间指令附近是平滑的。
 
-> Q：为什么将 Trap 上下文放到应用地址空间的次高页面而不是内核地址空间中的内核栈中呢？
+> Q：为什么将 <u>**Trap 上下文**</u>放到应用地址空间的**次高页面**而不是内核地址空间中的内核栈中呢？
 >
 > A：为了在内核栈中保存上下文，需要以下步骤：
 >
@@ -682,6 +682,8 @@ impl MemorySet{
 > - 无需切换到内核地址空间，也无需额外的寄存器来保存内核栈信息。
 
 此处，上下文新添加的内容在初始化之后，只会被读取而不会被写入 ，无需每次都保存或恢复。在应用初始化时由内核写入应用地址空间中的 TrapContext 的相应位置，此后就不再被修改。
+
+在 Trap 上下文中包含更多内容：
 
 ```rust
 // os/src/trap/context.rs
@@ -704,6 +706,129 @@ pub struct TrapContext {
 }
 ```
 
-> `trap.S`与`linker.ld`汇编代码部分待补充
+> 文档重新介绍了`trap.S`与`linker.ld`，增加了跳板，大体上没有改变。
 
-刚产生trap时，CPU已经进入了内核态（即Supervisor Mode），但此时执行代码和访问数据还是在应用程序所处的用户态虚拟地址空间中。为保持CPU指令的连续执行，应用的用户态虚拟地址空间 和 操作系统内核的内核态虚拟地址空间 对切换地址空间的指令所在页的映射方式均是相同的。无论是内核还是应用的地址空间，跳板的虚拟页均位于同样位置，且它们也将会映射到同一个 实际存放这段 汇编代码的物理页帧。
+将 `trap.S` 中的整段汇编代码放置在 `.text.trampoline` 段，并在调整内存布局的时候将它对齐到代码段的一个页面中：
+
+```
+# os/src/linker.ld
+
+    stext = .;
+    .text : {
+        *(.text.entry)
++        . = ALIGN(4K);
++        strampoline = .;
++        *(.text.trampoline);
++        . = ALIGN(4K);
+        *(.text .text.*)
+    }
+```
+
+由此，汇编代码被放在内核和应用地址空间的最高虚拟页面上，并且内核和应用代码都只能看到各自的虚拟地址空间。由于这段汇编代码在执行**地址空间切换**，故而被称为**跳板**页面。
+
+由于无论是内核还是应用的地址空间，跳板的虚拟页均位于同样位置，且在执行 `__alltraps` 或 `__restore` 函数进行地址空间切换的时，切换地址空间指令所在页的映射方式均相同，故切换地址空间的指令控制流是可以连续执行的。
+
+`map_trampoline`调用`self.page_table.map()`构建虚实地址映射。
+
+> 在`trap.S`需要使用`jr trap_hander`而不能继续使用`call`，这里的理解遇到了一些困难，之后补充。
+
+#### 加载和执行应用程序
+
+首先需要更新`TaskControlBlock`模块，`TaskControlBlock::new()`解析传入的 ELF 格式数据构造应用的地址空间 `memory_set` 并获得其他信息.
+
+在内核初始化时，将所有的应用加载到全局应用管理器中：
+
+```rust
+# os/src/task/mod.rs
+lazy_static! {
+    /// a `TaskManager` global instance through lazy_static!
+    pub static ref TASK_MANAGER: TaskManager = {
+        println!("init TASK_MANAGER");
+        let num_app = get_num_app();
+        println!("num_app = {}", num_app);
+        let mut tasks: Vec<TaskControlBlock> = Vec::new();
+        for i in 0..num_app {
+            tasks.push(TaskControlBlock::new(get_app_data(i), i));
+        }
+        TaskManager {
+            num_app,
+            inner: unsafe {
+                UPSafeCell::new(TaskManagerInner {
+                    tasks,
+                    current_task: 0,
+                })
+            },
+        }
+    };
+}
+```
+
+#### 改进trap_hander
+
+```rust
+// os/src/trap/mod.rs
+#[no_mangle]
+pub fn trap_handler() -> ! {
+    set_kernel_trap_entry();
+    let cx = current_trap_cx();
+    let scause = scause::read(); // get trap cause
+    let stval = stval::read(); // get extra value
+    // trace!("into {:?}", scause.cause());
+    match scause.cause() {
+    // ...
+    }    
+    trap_return();
+```
+
+`cx`不能作为参数直接传入，需要获取当前应用 Trap 上下文的可变引用。
+
+而对于其中的`set_kernel_trap_entry`，
+
+```rust
+// os/src/trap/mod.rs
+fn set_kernel_trap_entry() {
+    unsafe {
+        stvec::write(trap_from_kernel as usize, TrapMode::Direct);
+    }
+}
+```
+
+会将 `stvec` 修改为函数 `trap_from_kernel` 的地址。即为，进入内核后再次触发到 S 的 Trap，则会在硬件设置一些 CSR 之后，跳过寄存器的保存过程，跳转到 `trap_from_kernel` 函数（直接 `panic` 退出）.
+
+之后再`trap_return`返回用户态，
+
+```rust
+// os/src/trap/mod.rs
+pub fn trap_return() -> ! {
+    set_user_trap_entry();
+    let trap_cx_ptr = TRAP_CONTEXT_BASE;
+    let user_satp = current_user_token();
+    extern "C" {
+        fn __alltraps();
+        fn __restore();
+    }
+    let restore_va = __restore as usize - __alltraps as usize + TRAMPOLINE;
+    // trace!("[kernel] trap_return: ..before return");
+    unsafe {
+        asm!(
+            "fence.i",
+            "jr {restore_va}",         // jump to new addr of __restore asm function
+            restore_va = in(reg) restore_va,
+            in("a0") trap_cx_ptr,      // a0 = virt addr of Trap Context
+            in("a1") user_satp,        // a1 = phy addr of usr page table
+            options(noreturn)
+        );
+    }
+}
+```
+
+启用分页模式之后，我们只能通过跳板页面上的虚拟地址来实际取得 ``__alltraps`` 和 ``__restore`` 的汇编代码。
+
+具体而言，我们需要跳转到 ``__restore`` 切换到应用地址空间，并从 Trap 上下文中恢复通用寄存器，并 ``sret`` 继续执行应用。
+
+首先需要找到 ``__restore`` 在内核/应用地址空间中共同的虚拟地址。由于 ``__alltraps`` 是对齐到地址空间跳板页面的起始地址 ``TRAMPOLINE`` 上的， 则 ``__restore`` 的虚拟地址只需在 ``TRAMPOLINE`` 基础上加上 ``__restore`` 相对于 ``__alltraps`` 的偏移量即可。这里 ``__alltraps`` 和 ``__restore`` 都是指编译器在链接时看到的内核内存布局中的地址。我们使用 ``jr`` 指令完成了跳转的任务。
+
+ ``__restore`` 需要两个参数，分别是 Trap 上下文在应用地址空间中的虚拟地址，和要继续执行的应用地址空间的 token. 
+ 
+> 如何知道需要两个参数？
+> 在汇编代码中，``__restore`` 函数使用了两个寄存器参数 ``a0`` 和 ``a1``。``a0`` 是用户空间的 TrapContext 指针。``a1`` 是用户空间页表的物理地址。 
