@@ -1,7 +1,7 @@
 ---
 author: wdlin
-pubDatetime: 2024-10-21T20:38:17Z
-modDatetime: 2024-12-18T22:26:00Z
+pubDatetime: 2024-10-21T20:38:17+08:00
+modDatetime: 2024-12-18T22:26:00+08:00
 title: rCore-1 ch1~3
 slug: rCore-1
 featured: false

@@ -1,7 +1,7 @@
 ---
 author: wdlin
-pubDatetime: 2024-10-20T17:51:06Z
-modDatetime: 2024-12-17T10:57:00Z
+pubDatetime: 2024-10-20T17:51:06+08:00
+modDatetime: 2024-12-17T10:57:00+08:00
 title: Rustlings Learning Recording
 slug: Rustling
 featured: false
