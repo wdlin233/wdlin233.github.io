@@ -26,6 +26,7 @@ description:
 | **BSS 段**    | 未初始化的全局/静态变量（`.bss`）  | 可读+写  | 静态（清零） |     |
 | **堆（Heap）**  | 动态分配的内存（`malloc` 等）   | 可读+写  | 动态增长   |     |
 | **栈（Stack）** | 函数调用栈帧、局部变量           | 可读+写  | 动态增长   |     |
+
 函数的栈帧保存在**栈**区域中，执行的代码保存在代码段中。
 
 关于一个栈帧包含什么，可以见[函数调用过程中的栈帧与内存管理](https://blog.csdn.net/weixin_41519463/article/details/122203481)一篇。一个栈从高地址向低地址延申，`fp`表示栈底所在的位置（高地址，Frame Pointer），`sp`表示栈顶（低地址，Stack Pointer）。在32位的x86架构上这两个值分别用`ebp`和`esp`表示，64位上是`rbp`和`rsp`.
@@ -41,9 +42,9 @@ description:
 
 `li a1, -16` 的作用是 将立即数 `-16` 加载到寄存器 `a1` 中，其他的指令可以参考[运算与控制流指令](https://blog.csdn.net/zsqianqiu/article/details/126072004)和[When to use j, jal, Jr, jalr?](https://www.reddit.com/r/RISCV/comments/13rcn8e/comment/jljjjqz/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
 
-RISC-V有~~一个比较不同的~~地方是将高位和低位分开，注意RISC-V是[小端序](https://zh.wikipedia.org/wiki/%E5%AD%97%E8%8A%82%E5%BA%8F#%E5%B0%8F%E7%AB%AF%E5%BA%8F)， 高位是`%hi()`，低位`%lo()`.
+注意RISC-V是[小端序](https://zh.wikipedia.org/wiki/%E5%AD%97%E8%8A%82%E5%BA%8F#%E5%B0%8F%E7%AB%AF%E5%BA%8F)， 高位是`%hi()`，低位`%lo()`.
 
-> 这里吐槽一下LoongArch的汇编看着好丑，各种`.`和`$`不如RV.
+> 这里吐槽一下LoongArch的汇编看着好丑，各种 `.` 和 `$` 不如 RV.
 
 说回`ra`和`fp`的作用。`ra`字面意思是返回地址，指的是当前函数执行完毕后应返回的地址，在函数返回前要从栈中加载`ra`，然后通过`ret/jr`跳转回调用者。也就是说`ra`是之前被调用处的一个中断的地址位置。`fp`(`preview fp`) 是父函数栈帧的帧指针，也就是要恢复的父函数栈帧基址。
 
