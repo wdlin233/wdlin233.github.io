@@ -2,6 +2,7 @@
 import { LOGO_IMAGE, SITE } from "@config";
 import Hr from "./Hr.astro";
 import LinkButton from "./LinkButton.astro";
+import TenshiLogo from "@/assets/Tenshi-logo.svg";
 
 export interface Props {
   activeNav?: "posts" | "archives" | "tags" | "about" | "search";
@@ -24,7 +25,7 @@ const { activeNav } = Astro.props;
               height={LOGO_IMAGE.height}
             />
           ) : (
-            SITE.title
+          <TenshiLogo class="scale-75 dark:invert" />
           )
         }
       </a>
