@@ -5,7 +5,7 @@ modDatetime: 2024-12-18T22:26:00+08:00
 title: rCore-1 ch1~3
 slug: rCore-1
 featured: false
-draft: false
+draft: true
 tags:
   - Rust
   - rCore

@@ -5,7 +5,7 @@ modDatetime: 2024-12-22T22:57:02+08:00
 title: rCore-2 ch4
 slug: rCore-2
 featured: false
-draft: false
+draft: true
 tags:
   - Rust
   - rCore
