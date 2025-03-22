@@ -5,7 +5,7 @@ modDatetime: 2024-12-17T10:57:00+08:00
 title: Rustlings Learning Recording
 slug: Rustling
 featured: false
-draft: false
+draft: true
 tags:
   - Rust
 description:
