@@ -142,4 +142,149 @@ pub struct TaskControlBlock {
 
 `exec`加载一个新的 ELF 文件并替换原有应用地址空间的内容. `sys_exec`先通过`translated_str`将该地址所对应的内容以`char`类型翻译后传回`String`，然后返回 ELF 格式的数据并执行`exec`替换当前进程的应用地址空间. 由于执行`sys_exec`时原有的地址空间会被销毁，各物理页帧都会被回收，为了应对失效的上下文`cx`, 在`trap_handler`中需要重建`cx`.
 
-`sys_waitpid`寻找当前进程子进程中符合`pid`且为僵尸进程的进程，将其回收，附带有对`exit_code`的处理和对旧`pid`的返回. 
+`sys_waitpid`寻找当前进程子进程中符合`pid`且为僵尸进程的进程，将其回收，附带有对`exit_code`的处理和对旧`pid`的返回.
+
+## 文件系统
+
+### File Trait & UserBuffer
+
+所有的文件访问都可以通过一个抽象接口`File`这一 Trait 进行，具体实现上是`Send + Sync`. 这为文件访问提供了并发的能力，参见[基于 Send 和 Sync 的线程安全](https://course.rs/advance/concurrency-with-threads/send-sync.html#send-%E5%92%8C-sync).
+
+定义于`mm`模块中的`UserBuffer`是应用地址空间的一段缓冲区，文档中说这可以被理解为`&[u8]`切片，这似乎具有一定的二义性，就从类型`pub buffers: Vec<&'static mut [u8]>`理解即可. 这实际上是一组 utf8 编码构成的数组，在`Stdout`的`write`方法中直接使用了`from_utf8(*buffer)`. 参见[from_utf8](https://doc.rust-lang.org/std/str/fn.from_utf8.html). 
+
+`UserBuffer`与`translated_byte_buffer` 方法是对应的，返回向量形式的字节(`u8`)数组切片，内核空间可以访问. 理清`UserBuffer`后，在此基础上构建了`Stdin::read`和`Stdout::write`.
+
+### fd_table
+
+每个进程都带有一个文件描述符表`fd_table`，记录请求打开并可以读写的文件集合。此表对应有文件描述符 (File Descriptor, `fd`) 以一个非负整数记录对应文件位置。`open`或`create`会返回对应描述符，而`close`需要提供描述符以关闭文件。
+
+在`TaskControlBlockInner`中就有`pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>`. 包含了共享引用和诸多特性，文档里有详细的解释. 其中`dyn`就是一种运行时多态. 在 fork 时，子进程完全继承父进程的文件描述符表，由此共享文件. 新建进程时，默认先打开标准输入文件`Stdin`和标准输出文件`Stdout`.
+
+`sys_write`和`sys_read`根据对应的文件描述符`fd`从当前进程的`fd_table`中取出文件并执行对应的读写操作.
+
+### easy-fs
+
+#### BlockDevice
+
+文件系统自底向上共有五层。最底部是块的抽象接口`BlockDevice` Trait 基于`Send + Sync + Any`实现，其中`Any`是模拟动态类型的特性，参看[Any in std::any](https://doc.rust-lang.org/std/any/trait.Any.html). 两个方法`read_block`和`write_block`都以 Buffer 为中介与磁盘上的块进行读写.
+#### BlockCache
+
+往上是块 Cache , 用内存作为磁盘块的缓存以加速IO操作. 定义块缓存`BlockCache`
+
+```rust
+pub struct BlockCache {
+    /// cached block data
+    cache: [u8; BLOCK_SZ],
+    /// underlying block id
+    block_id: usize,
+    /// underlying block device
+    block_device: Arc<dyn BlockDevice>,
+    /// whether the block is dirty
+    modified: bool,
+}
+```
+
+块缓存`BlockCache`内含一个 512 字节的数组，即以`u8`为一个字节，长度为`BLOCK_SZ = 512` 的`[u8; BLOCK_SZ]`.  `cache`表示位于内存中的缓冲区，`block_device`表示所属的块设备. 享有方法`get_ref`和`get_mut`用于获取地址所对应内容的引用和可变引用，用闭包`f`进一步封装分别得到`read`和`modify`方法. 此处选择的闭包类型为`FnOnce`.
+
+在此之上建立一个全局的块管理器`BlockCacheManager`用以管理内存中的`BlockCache`. 方法`get_block_cache`用于在队列中搜索对应块编号的磁盘块，若队列已满则使用类 FIFO 的算法将当前块载入队列中. 
+
+由于我们希望内存中只能驻留有限的磁盘块缓冲区，我们定义`BLOCK_CACHE_SIZE = 16`. 从`BlockCacheManager`中获取块缓存时会检查队列的长度是否达到了`BLOCK_CACHE_SIZE`，如果达到就会发生缓存替换. 此处注意区别`BLOCK_CACHE_SIZE`是块缓存队列的长度上限，而`BLOCK_SZ`则是单个`BlockCache`中`cache`的大小.  
+#### Layout & Bitmap
+
+然后是其上磁盘数据结构层。这其中按块编号又分为五个区域：超级块、索引节点位图、索引节点区域`DiskInode`、数据块位图和数据块区域`DataBlock`.
+
+每个位图`BitmapBlock`都由若干个块组成，每个 bit 代表一个索引节点或数据块的分配状态. 而`Bitmap`则作为位图的管理器记录位图区域的起始块编号的个数。
+
+首先是`SuperBlock`存放在磁盘上编号为 0 的块起始处. 然后是位图`Bitmap`，由若干个块组成，块的大小`BLOCK_BITS`也是 512 字节，对应 $512 \times 8 = 4096 \ bits$. 每一个`bit`代表一个`inode/block`的分配状态.
+
+```rust
+pub struct Bitmap {
+	start_block_id: usize,
+	blocks: usize,
+}
+```
+
+标明起始块编号和`Bitmap`所占的区域长度. 而
+
+```rust
+type BitmapBlock = [u64; 64];
+```
+
+是`Bitmap`的具体实现，存储`Bitmap`其上的数据. 解释 4096 为 $64 \times 64$ 的数组应该只是为了方便操作.
+
+`alloc`在`bitmap_block`中找到一个空闲的 bit 并返回其位置，如果没有达到 `u64::MAX`，则通过 `u64::trailing_ones` 找到最低的一个 0 的位置. `BLOCK_BITS`是一个块大小的 bits 描述，不同于`BLOCK_SZ`的 Bytes 表述. `Bitmap`的`(block_pos, bits64_pos, inner_pos)`分别是，所处哪一个编号的内存块、第几组`bits64`组（组编号）、在`bits64`组中的第几`bit`（组内编号）.
+
+***
+
+接着讨论索引节点和目录项. 
+
+```rust
+#[repr(C)]
+pub struct DiskInode {
+    // file size
+    pub size: u32,
+    // direct address
+    pub direct: [u32; INODE_DIRECT_COUNT],
+    pub indirect1: u32,
+    pub indirect2: u32,
+    type_: DiskInodeType,
+    // links_count: u32,
+}
+```
+
+每个文件/目录在磁盘上均以`DiskInode`进行存储. `size` 表示其内容的字节数. 
+
+一个块的编号用一个`u32`进行存储。索引方式分直接和间接两种，`direct`直接指向**数据块**，`indirect1`和`indirect2`分别指向一级和二级索引块。一级索引块中的每个`u32`指向一个数据块，而二级索引块的每个`u32`指向一个不同的一级索引块。一级索引块和二级索引块都位于**数据块区域中**。块的编号用一个`u32` (4 Bytes) 存储，一个索引块最多索引 $512 \ Bytes \div 4 \ Bytes = 128$ 个数据块 (`DataBlock`大小为 512 字节，定义为字节数组 `[u8; BLOCK_SZ]`) . 此处基于元数据的个数对`DiskInode`的大小进行了调整，当前为 128 字节.  
+
+`get_block_id` 就是根据索引取出第 `block_id` 个数据块的块编号，用于后续对此数据块进行访问. `total_blocks` 的计数方法是类似于 `_data_blocks` 的. `increase_size` 用 `new_blocks.next()` 增加大小. `clear_size` 用类似的方法清空. `read_at` 将 `offset` 字节开始的部分读入内存缓冲区 `buf` 中.
+
+以上是索引节点. 目录对应的目录项为一个二元组`DirEntry`. 目录项长 32 Bytes，每个数据块可以存 16 个目录项. 
+```rust
+pub struct DirEntry {
+	name: [u8; NAME_LENGTH_LIMIT + 1],
+	inode_number: u32,
+}
+```
+
+#### EasyFileSystem
+
+为了实现磁盘数据结构的整合，将所有的数据结构存储在内存上，实现**磁盘块管理器** `EasyFileSystem` 于 `efs.rs` 中. 包含设备指针 `block_device`，两个位图和对应起始编号. 
+
+```rust
+pub struct EasyFileSystem {
+    ///Real device
+    pub block_device: Arc<dyn BlockDevice>,
+    ///Inode bitmap
+    pub inode_bitmap: Bitmap,
+    ///Data bitmap
+    pub data_bitmap: Bitmap,
+    inode_area_start_block: u32,
+    data_area_start_block: u32,
+}
+```
+
+`EasyFileSystem`可以由位图上的 bit 编号得知 inode 块 (`get_disk_inode_pos`) 和 数据块 (`get_data_block_id`) 在磁盘上的实际位置，同时实现了以及 inode 和 数据块的分配与回收. `EasyFileSystem::open`用于在装载了 easy-fs 镜像的块设备上打开 easy-fs，实际上就是把块编号为 0 的超级块读入.
+
+#### Inode
+
+以上均为磁盘布局的处理，作为文件系统的暴露接口，最顶层的**索引节点层**如下. 相对于`DiskInode`放在磁盘中的固定位置，`Inode`作为内存中记录文件索引信息的具体数据结构.
+
+```rust
+pub struct Inode {
+    block_id: usize,
+    block_offset: usize,
+    fs: Arc<Mutex<EasyFileSystem>>,
+    block_device: Arc<dyn BlockDevice>,
+    // inode_id: u32,
+}
+```
+
+其中`block_id`和`block_offset`记录对应`DickInode`的于磁盘的具体位置.
+
+根据《现代操作系统：原理与实现》260 页，为了实现文件名与文件具体存储位置的解耦，用目录记录文件名到 inode 的映射实现解耦，目录中保存的就是目录项.
+
+`find`以`find_inode_id`为底层实现，遍历目录项下的目录项磁盘块，结果存入临时的目录项缓冲`dirent`中，判断名字是否相等以确定是否找到.
+
+> to be continue...
+
+`EasyFileSystem::open`装载后，首先获取根目录的`Inode`.
