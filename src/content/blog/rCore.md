@@ -265,9 +265,11 @@ pub struct EasyFileSystem {
 
 `EasyFileSystem`可以由位图上的 bit 编号得知 inode 块 (`get_disk_inode_pos`) 和 数据块 (`get_data_block_id`) 在磁盘上的实际位置，同时实现了以及 inode 和 数据块的分配与回收. `EasyFileSystem::open`用于在装载了 easy-fs 镜像的块设备上打开 easy-fs，实际上就是把块编号为 0 的超级块读入.
 
-#### Inode
+`EasyFileSystem` 是一个扁平化的文件系统，在目录树上仅有一层目录，即作为根节点的根目录. 所有的文件都在根目录下.
 
-以上均为磁盘布局的处理，作为文件系统的暴露接口，最顶层的**索引节点层**如下. 相对于`DiskInode`放在磁盘中的固定位置，`Inode`作为内存中记录文件索引信息的具体数据结构.
+#### VFS (Inode)
+
+以上均为磁盘布局的处理，作为文件系统的暴露接口，最顶层的**索引节点层**如下. 相对于`DiskInode`放在磁盘中的固定位置，`Inode`作为内存中记录文件索引信息的具体数据结构. 根据其成员不难看出 `Inode` 是基于 `EasyFileSystem` 之上的实现. vfs 是为了让不同文件系统在同一个操作系统运行之上进行的抽象.
 
 ```rust
 pub struct Inode {
@@ -279,12 +281,30 @@ pub struct Inode {
 }
 ```
 
-其中`block_id`和`block_offset`记录对应`DickInode`的于磁盘的具体位置.
+其中 `block_id` 和 `block_offset` 记录该 `Inode` 对应的 `DiskInode` 于磁盘的具体位置. 差别在于 `DiskInode` 放在磁盘块中比较固定的位置，而 `Inode` 是放在内存中用以记录文件索引节点信息的数据结构. 依据 [Project rCore: 文件系统 - Xuewei's Blog](https://nxw.name/2022/project-rcore-file-system#toc_7) 的说法：尽管一个文件的所有数据块在物理上是分散的，而用户一般把文件看作是一个连续的二进制（逻辑上的）。那么这一层做的事情就显而易见了：**向上层屏蔽物理视角，提供喜闻乐见的逻辑视角**。
 
-根据《现代操作系统：原理与实现》260 页，为了实现文件名与文件具体存储位置的解耦，用目录记录文件名到 inode 的映射实现解耦，目录中保存的就是目录项.
+根据《现代操作系统：原理与实现》，Inode (index node) 也即我们实现的`DiskInode`，记录了一个文件所对应的所有存储块号，而为了实现文件名与文件具体存储位置的解耦，用**目录**记录文件名到 inode 的映射实现解耦. 目录是一种特殊类型的文件，记录了文件名到 inode 号的映射，而因为目录本身也是文件，就可以递归地组织文件系统中的文件. 常规文件保存用户数据，而目录中保存的就是目录项 `DirEntry`，每个目录项代表一条文件信息记录文件名到 inode 的映射.  书中 图 9-3 比较好的展示了其中的逻辑关系.
 
-`find`以`find_inode_id`为底层实现，遍历目录项下的目录项磁盘块，结果存入临时的目录项缓冲`dirent`中，判断名字是否相等以确定是否找到.
+理解了逻辑视角后，剩下的都是方法的具体实现.
 
-> to be continue...
+`find`以`find_inode_id`为底层实现，遍历（根）目录项下的目录项磁盘块，结果存入临时的目录项缓冲`dirent`中，判断名字是否相等以确定是否找到. 注意，所有暴露给文件系统的使用者的操作，全程均需持有 `EasyFileSystem` 的**互斥锁**.
 
-`EasyFileSystem::open`装载后，首先获取根目录的`Inode`.
+`ls` 获取目录下所有文件的文件名. `clear` 调用 `dealloc_data` 用于清空文件. `read_at` 和 `write_at` 调用 `DiskInode` 的各自方法，也是以缓冲区作为中介. `append_dirent` 即建立文件名到 inode 的映射关系，比较常用.
+
+一切我们应当实现的方法都集中在 `Inode` 接口上. `link_at`  就是将两个目录项的名称关联到同一 inode 上并增加链接数. `unlink_at` 的底层实现中 `find_entry_inode_id_and_index` 获取 idx 和 `swap_remove_dirent` 是对应关系， `swap_remove_dirent` 和 `swap_remove_back` 思想是类似的.
+
+先前讨论的都是 `easy-fs`. 然后我们就可以使用 `EasyFileSystem` 选择性地将 ELF 应用程序文件加载进内存，这就是 `easy-fs-fuse` 的功能.
+
+### FileSystem in Kernel (os/fs)
+
+实现了文件系统后就要在内核中实现对接 `easy-fs` 的各种结构，自下而上分为块设备驱动、`easy-fs` 层、内核索引节点层、文件描述符层和系统调用层.
+
+块设备驱动对接的是 Qemu, 使用 VirtIO 总线并对其 MMIO 区间进行配置. 在`drivers` 模块下.
+
+`easy-fs` 层接受一个块设备 `BlockDevice` 并在其上打开文件系统 `EasyFileSystem`.
+
+内核索引节点层将 `easy-fs` 中的 `Inode` 封装成 `OSInode`. 在 `fs` 模块下. `OSInode` 表示进程中一个被打开的常规文件或目录，描述了读写特性，又支持互斥访问和内部可变性. `offset` 是读写过程中的辅助偏移量.
+
+文件描述符层就是将 `File` Trait 赋给 `OSInode`. 遍历 `UserBuffer` 中的缓冲区片段再调用 `Inode` 的 `read/write_at` 接口. 并且在进程 `TaskControlBlockInner` 中实现了文件描述符表 `fd_table`.
+
+然后就是各系统调用 syscall 了，全局例化一个 `ROOT_INODE` 并修改相关的 syscall.
