@@ -308,3 +308,115 @@ pub struct Inode {
 文件描述符层就是将 `File` Trait 赋给 `OSInode`. 遍历 `UserBuffer` 中的缓冲区片段再调用 `Inode` 的 `read/write_at` 接口. 并且在进程 `TaskControlBlockInner` 中实现了文件描述符表 `fd_table`.
 
 然后就是各系统调用 syscall 了，全局例化一个 `ROOT_INODE` 并修改相关的 syscall.
+
+## 进程间通信
+
+### Pipe
+
+管道是单项的 IPC，内核中通常有一定的缓冲区来缓存消息，通信的数据就是字节流。管道的创建会返回一组（两个）文件描述符，并使用内存作为数据的缓冲区，行为类似于 FIFO 队列，最早传入的数据会最先被读出。
+
+IPC Pipe 定义如下
+
+```rust
+/// IPC pipe
+pub struct Pipe {
+    readable: bool,
+    writable: bool,
+    buffer: Arc<UPSafeCell<PipeRingBuffer>>,
+}
+
+pub struct PipeRingBuffer {
+    arr: [u8; RING_BUFFER_SIZE],
+    head: usize,
+    tail: usize,
+    status: RingBufferStatus,
+    write_end: Option<Weak<Pipe>>,
+}
+```
+
+管道自身是带有一定大小缓冲区的字节队列，抽象为 `PipeRingBuffer` 类型. `PipeRingBuffer` 中的 `arr/head/tail` 将一个循环队列. `write_end` 保存了写端的弱引用计数，在某些情况下，需要确认管道所有的写端是否都已经被关闭. `Pipe` 就是加了读写属性的 `PipeRingBuffer`.
+
+`make_pipe` 方法创建一个管道并返回它的读端和写端，
+
+```rust
+/// Return (read_end, write_end)
+pub fn make_pipe() -> (Arc<Pipe>, Arc<Pipe>) {
+    let buffer = Arc::new(unsafe { UPSafeCell::new(PipeRingBuffer::new()) });
+    let read_end = Arc::new(Pipe::read_end_with_buffer(buffer.clone()));
+    let write_end = Arc::new(Pipe::write_end_with_buffer(buffer.clone()));
+    buffer.exclusive_access().set_write_end(&write_end);
+    (read_end, write_end)
+}
+```
+
+`TaskControlBlockInner::alloc_fd` 分配一个空闲文件描述符来访问新打开的文件。尝试找到一个空闲，没有就拓展文件描述符表的长度并再分配. 然后调用 `translated_refmut` 获取物理地址，将读端和写端的文件描述符写回到应用地址空间.
+
+`PipeRingBuffer::read_byte` 和 `PipeRingBuffer::write_byte` 分别是基于循环队列对缓冲区进行更改，比较简单. 然后对 `Pipe` impl `File` Trait, 实现读写操作. 以 `read` 为例 `loop_read` 来表示可从管道中读取多少字符。若管道为空且所有写端已关闭，则没有任何字符可以读取，直接返回；否则等待填充，先调用 `suspend_current_and_run_next` 切换到其他任务. 可读的字符数不为 0 就循环读取直至缓冲区满或读完. `write` 方法的实现原理是类似的.
+
+### Command Args
+
+为了实现命令行参数，在 `sys_exec` 中需要将参数的地址压入用户栈. 此处 `args` 指向命令行参数字符串的起始地址，每次通过 `translated_str` 拿到一个字符串 `String`.
+
+在 `exec` 内需要将参数压栈，此处的地址转换比较复杂. 首先 `user_sp` 是从 `from_elf` 函数返回的地址，先将其 `user_sp -= (args.len() + 1) * core::mem::size_of::<usize>()` 由此预留出直到下图中 `agrv_base` 的空间，`argv[i]` 的**地址**依次填入 `agrv` 这一变长数组 `Vec` 中. 然后再从 `argv_base` 位置往低处拓展，`*argv[i] = user_sp` 将 `agrv[i]` 地址的**内容**依次以 `user_sp` 这一地址进行填充. `as_bytes` 将 `args[i]` 的 `String` 转换为 `&[u8]` 以保存在栈中，字符结尾赋 0. `user_sp -= user_sp % core::mem::size_of::<usize>()` 用于对齐.
+
+```rust
+// push arguments on user stack
+user_sp -= (args.len() + 1) * core::mem::size_of::<usize>();
+let argv_base = user_sp;
+let mut argv: Vec<_> = (0..=args.len())
+	.map(|arg| {
+		translated_refmut(
+			memory_set.token(),
+			(argv_base + arg * core::mem::size_of::<usize>()) as *mut usize,
+		)
+	})
+	.collect();
+*argv[args.len()] = 0;
+
+for i in 0..args.len() {
+	user_sp -= args[i].len() + 1;
+	*argv[i] = user_sp;
+	let mut p = user_sp;
+	for c in args[i].as_bytes() {
+		*translated_refmut(memory_set.token(), p as *mut u8) = *c;
+		p += 1;
+	}
+	*translated_refmut(memory_set.token(), p as *mut u8) = 0;
+}
+// make the user_sp aligned to 8B for k210 platform
+user_sp -= user_sp % core::mem::size_of::<usize>();
+```
+
+内存布局示意图如下，在 rCore 之外可能需要对此布局进行更改，可以参考[Arceos 宏内核 lab1 report - AqStage](https://blog.aqpower.cn/index.php/archives/76/)的博文.
+
+![img](https://rcore-os.cn/rCore-Tutorial-Book-v3/_images/user-stack-cmdargs.png#pic_center=600x600)
+
+### I/O 重定向 (sys_dup)
+
+应用中除非明确指明数据输入或输出的文件，否则数据默认都 输入自 进程文件描述表位置 0 处的标准输入，并输出到 进程文件描述符表位置 1 处的标准输出. 实现标准输入输出的重定向，就意味着对文件描述符表进行替换.
+
+具体实现来说，在文件描述符表中分配一个新的文件描述符，并保存为 `fd` 指向的已打开文件的拷贝.
+
+## 并发
+
+线程建立在进程的地址空间抽象之上，每个线程都共享 进程的代码段和和可共享的地址空间（诸如全局数据段、堆等），但有自己的独占的栈.
+
+在现有的进程管理上实现线程管理，需要把进程中处理器相关的部分移到 `TaskControlBlock` 中，形成线程. 我们以 `TaskControlBlock` 作为线程的数据结构，`TaskManager` 用于管理线程集合，`Processor` 进行线程调度以维持线程的处理器状态.
+
+```rust
+/// Task control block structure
+pub struct TaskControlBlock {
+    /// immutable
+    pub process: Weak<ProcessControlBlock>,
+    /// Kernel stack corresponding to PID
+    pub kstack: KernelStack,
+    /// mutable
+    inner: UPSafeCell<TaskControlBlockInner>,
+}
+```
+
+线程共享进程的地址空间. 线程控制块包含线程初始化后不再变化的元数据，即所属进程和内核栈. 可能发生变化的元数据放在 `TaslControlBlockInner` 中，其中保存着线程各自运行所需的状态，即**上下文**；又有 `TaskUserRes` 包含线程标识符 `tid` 和线程的用户栈顶地址 `ustack_base`. 可以看出，线程拥有独立的内核栈与用户栈. `PID_ALLOCATOR` 和 `KSTACK_ALLOCATOR` 都基于 `RecycleAllocator` 是相比先前 `PidAllocator` 更泛用的版本.
+
+每个进程拥有自己的进程标识符 (TID) ，可以使用 `sys_thread_create` 来创建一个线程. 这意味着在进程内部创建一个线程，该线程可以访问到进程所拥有的代码段， 堆和其他数据段。但内核会给这个新线程分配其专有的用户态栈. 由此实现每个线程的独立调度和执行. 同样的，每个线程也拥有一个独立的跳板页 `TRAMPOLINE`. 相比于 `fork` ，创建线程不需要建立新的地址空间. 线程之间也没有父子关系. 实现上比较简单，就是在新建 `TaskControlBlock` 后添加到 `tasks[new_task_tid]` 下.
+
+线程用户态用到的资源会在 `exit` 系统调用后自动回收，而诸如内核栈等内核态线程资源则需要 `sys_waittid` 来回收以彻底销毁线程. 进程 / 主线程通过 `waittid` 来等待创建出的线程结束，并回收内核中的资源. `exit_current_and_run_next` 是比较繁琐的 进程 资源回收，由主线程发起. `sys_waittid` 是主线程进行调用，等待其他线程结束的方法，发现等待自身则返回，否则收集退出码 `exit_code` 清空此线程的线程控制块，因为 `Arc` 在引用计数为 0 时会自动释放.
