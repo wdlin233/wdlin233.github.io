@@ -399,6 +399,8 @@ user_sp -= user_sp % core::mem::size_of::<usize>();
 
 ## 并发
 
+### Threads
+
 线程建立在进程的地址空间抽象之上，每个线程都共享 进程的代码段和和可共享的地址空间（诸如全局数据段、堆等），但有自己的独占的栈.
 
 在现有的进程管理上实现线程管理，需要把进程中处理器相关的部分移到 `TaskControlBlock` 中，形成线程. 我们以 `TaskControlBlock` 作为线程的数据结构，`TaskManager` 用于管理线程集合，`Processor` 进行线程调度以维持线程的处理器状态.
@@ -420,3 +422,51 @@ pub struct TaskControlBlock {
 每个进程拥有自己的进程标识符 (TID) ，可以使用 `sys_thread_create` 来创建一个线程. 这意味着在进程内部创建一个线程，该线程可以访问到进程所拥有的代码段， 堆和其他数据段。但内核会给这个新线程分配其专有的用户态栈. 由此实现每个线程的独立调度和执行. 同样的，每个线程也拥有一个独立的跳板页 `TRAMPOLINE`. 相比于 `fork` ，创建线程不需要建立新的地址空间. 线程之间也没有父子关系. 实现上比较简单，就是在新建 `TaskControlBlock` 后添加到 `tasks[new_task_tid]` 下.
 
 线程用户态用到的资源会在 `exit` 系统调用后自动回收，而诸如内核栈等内核态线程资源则需要 `sys_waittid` 来回收以彻底销毁线程. 进程 / 主线程通过 `waittid` 来等待创建出的线程结束，并回收内核中的资源. `exit_current_and_run_next` 是比较繁琐的 进程 资源回收，由主线程发起. `sys_waittid` 是主线程进行调用，等待其他线程结束的方法，发现等待自身则返回，否则收集退出码 `exit_code` 清空此线程的线程控制块，因为 `Arc` 在引用计数为 0 时会自动释放.
+
+### Mutex
+
+从线程的视角来看，互斥是一种资源，因此在 `TaskControlBlockInner` 中存放有 `pub mutex_list: Vec<Option<Arc<dyn Mutex>>>`. 其具体实现为 `MutexBlock` 下的 `MutexBlockInner`.
+
+```rust
+pub struct MutexBlockingInner {
+    locked: bool,
+    wait_queue: VecDeque<Arc<TaskControlBlock>>,
+}
+```
+
+`sys_mutex_create` 在当前进程中替换或新增一个互斥锁，此处会根据 `blocking` 参数决定是基于阻塞机制的阻塞锁 `MutexBlocking` 还是类似于 yield 机制的自旋锁 `MutexSpin`.  区别在于阻塞锁 `MutexBlocking` 维护一个等待队列，以 FIFO 唤醒任务保证公平；而自旋锁 `MutexSpin` 在解锁之后所有任务需要重新竞争，可能会引发饥饿. `MutexBlocking` 在彻底阻塞期间不存在 CPU 占用，零空转，适合高竞争的场景，但存在唤醒的调度开销；而 `MutexSpin` 没有任务切换开销但可能会导致频繁的上下文切换开销，若 CPU 频繁让出.
+
+`sys_mutex_lock` 就是取出对应的 `mutex` 并上锁. `sys_mutex_unlock` 类似.
+
+### Semaphore
+
+ 与 Mutex 类似，有 `pub semaphore_list: Vec<Option<Arc<Semaphore>>>`. 具体实现上，拥有一个信号量值和等待列表.
+
+```rust
+pub struct SemaphoreInner {
+    pub count: isize,
+    pub wait_queue: VecDeque<Arc<TaskControlBlock>>,
+}
+```
+
+信号量的值表示资源数量，当其小于或等于 0 时会进入循环等待. 只有在信号量大于 0 时，才停止等待并消耗资源. P & V 操作分别对应 `down` 和 `up` 方法. 使用 `down` 方法，如果此时信号量小于 0 就将当前任务推入 `wait_queue` 中，并阻塞当前任务. 而 `up` 方法就是在小于或等于 0 时弹出 `wait_queue` 中的任务并对其唤醒.
+
+### Condvar
+
+可以考虑一个生产者消费者模型，剩余空位为 0 时，生产者会进入 循环等待 的状态，浪费了 CPU 资源. 条件变量便是满足这类需求而设计的一种 挂起 / 唤醒 机制. 通过条件变量接口，一个线程可以停止使用 CPU 并将自己挂起，等到条件满足时再由其他线程唤醒并继续执行. 一般条件变量与互斥锁搭配使用.
+
+2025S 的文档在谈论条件变量时与管程一同讨论，但管程更应该是部分高级语言上的同步原语接口抽象，例如 Java. Rust 并不在语言上支持管程机制，rCore 只是手动加入互斥锁的方式代替编译器. 
+
+对于条件变量，同理有 `pub condvar_list: Vec<Option<Arc<Condvar>>>`. 在实现上
+
+```rust
+pub struct CondvarInner {
+    pub wait_queue: VecDeque<Arc<TaskControlBlock>>,
+}
+```
+
+有 `wait` 和 `signal` 方法， 分别用于挂起当前进程和唤醒等待进程. 实现上 `signal` 比较简单，就是用 `wakeup_task` 将等待队列中的线程唤醒，而 `wait` 复杂一些：先将锁释放后，将自己以阻塞的方式挂起并进入等待队列中，待到被唤醒后再获取锁. 这意味着，在 `wait` 挂起后，互斥锁 `mutex` 通过 `unlcok` 被原子地释放，允许其他线程进入此临界区，若满足线程等待的条件，将会调用 `signal` 以唤醒线程，此时重新获取互斥锁 `mutex`. 此处参考了《现代操作系统：原理与实现》，理解条件变量最好先接触使用条件变量的程序. Syscall 上就是对指定 `condvar_id` 调用 `wait` 和 `signal`. 
+
+### BankerAlgo
+
+> TO BE CONTINUE...
