@@ -469,4 +469,59 @@ pub struct CondvarInner {
 
 ### BankerAlgo
 
-> TO BE CONTINUE...
+在死锁出现的四个必要条件中，只有循环等待和实际状况相关. 我们可以通过分析资源分配 / 等待图以发现死锁，解除死锁就意味着打破循环等待关系. 我们可以通过对系统运行时资源分配的管理来避免死锁. 一个系统存在两种状态：安全状态和非安全状态. 安全状态一定不会出现死锁，非安全状态可能导致死锁. 避免死锁算法就是让每一次资源分配后，系统都处于安全状态.
+
+银行家算法是死锁避免中的一种具体策略. 设系统中存在 M 类资源和 N 个线程，有以下四种数据结构：
+
+- `Available[M]` 系统此时 M 类资源各自可用个数
+- `Max[N][M]` 线程对资源的最大需求量
+- `Allocation[N][M]` 已分配的资源数量
+- `Need[N][M]` 还需要的资源数量
+
+思路为模拟资源分配后，检查系统是否还处于安全状态. 具体而言：
+
+1. 创建临时数组 `Available_sim` 表示运行时动态变化的 M 类各自可用资源的个数，在 2025S 中用 `Work` 表示. 先前的 `Available` 可以认为是整个系统的资源最大量，不会变化.
+2. 找到一个线程 `x` 满足其分配需求即 `Available[m]` >= `Need[x][m]` 对 M 类资源都成立. 若找不到则说明系统处于非安全状态.
+3. 线程得到资源后执行. 执行完成后释放资源. 执行 `Available_sim[m] += Allocation[x][m]`. 标记 `x` 线程执行结束.
+4. 遍历所有，查看是否有未执行结束的线程. 如果有就返回第二步，否则代表系统处于安全状态.
+
+在 [银行家算法](https://zh.wikipedia.org/wiki/%E9%93%B6%E8%A1%8C%E5%AE%B6%E7%AE%97%E6%B3%95) 中的伪代码也清晰地说明了实现思路. 不过其 `Need` 以 `Max - Allocation` 表示.
+
+考虑在 rCore 中实现，对于 `BankerAlgorithm`
+
+```rust
+/// Implementation of banker's algorithm
+#[derive(Debug, Default)]
+pub struct BankersAlgorithm {
+    /// Available map, (Resource) = avaibable number
+    available: BTreeMap<ResourceIdentifier, NumberOfResource>,
+    /// (Task, Resource) = ResourceState {allo, need}
+    task_state: BTreeMap<TaskIdentifier, BTreeMap<ResourceIdentifier, TaskResourcesState>>,
+}
+
+#[derive(Debug, Default)]
+struct TaskResourcesState {
+    // max: NumberOfResource,
+    allocation: NumberOfResource,
+    need: NumberOfResource,
+}
+```
+
+对于 `TaskResourceState` 我们只需要 `allocation` 和 `need` ，这方便我们的分配操作，而 `max` 一般只是检查资源的合理性.
+
+全局实例 `DEADLOCK_DETECT_ENABLED` 是对 `pid` 到 `BankerAlogorithm` 的 KV 键值对，用于开启对应 `pid` 的死锁避免算法.
+
+考虑我们先前提到的步骤，对 `available` 的方法就是 `add_resource` ，以添加对应资源的数量. 对 `task_state` 的方法较多一些，`request` 是对 `record` 的封装，同时执行 `security_check`. `record` 就是试探性地将 `need` 数量增加；`alloc` / `acquire` 直接分配：
+
+```rust
+// Available[j] = Available[j] - Request[i,j];
+*available -= request;
+// Allocation[i,j] = Allocation[i,j] + Request[i,j];
+task.allocation += request;
+// Need[i,j] = Need[i,j] - Request[i,j];
+task.need -= request;
+```
+
+`dealloc` / `release` 就是反过来执行. `security_check` 开启一个全为 `false` 的数组表示初始时所有线程都没有结束，执行上述所说 1 ~ 4 步进行安全性检查. 我认为这里是检查分配后是否会出现死锁，检查所有线程以保证系统安全.
+
+在具体实现上，`add_resource` 添加在 `sys_mutex_create` 和 `sys_semaphore_create` 上. `request` 在 `sys_mutex_lock` 和 `sys_semaphore_down` 中用于检测安全性. `acquire` 意为获取资源仅在 `sys_semaphore_down` 中，因为 `sys_mutex_lock` 直接调用 `mutex.lock()`? 此处可能存在问题. `release` 在 `sys_mutex_unlock` 和 `sys_semaphore_up` 中都存在因为这意味着对已占用资源的释放. 
