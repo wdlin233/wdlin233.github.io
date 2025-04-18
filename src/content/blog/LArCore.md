@@ -17,7 +17,7 @@ description:
 
 ### 特权级架构
 
-龙芯架构定义了 4 个运行特权等级（Privilege LeVel, PLV），分别是 PLV0~PLV3. 应用软件应运行在 PLV1~PLV3 上，通常是在 PLV3 上，与运行在 PLV0 级上的操作系统等系统软件隔离开。与 RISC-V 不同，loongarch 架构下没有所谓的M态。
+龙芯架构定义了 4 个运行特权等级（Privilege LeVel, PLV），分别是 PLV0\~PLV3. 应用软件应运行在 PLV1\~PLV3 上，通常是在 PLV3 上，与运行在 PLV0 级上的操作系统等系统软件隔离开。与 RISC-V 不同，loongarch 架构下没有所谓的M态。
 
 讲到特权级就必然涉及各种状态寄存器 CSR，这些内容在龙芯官方的手册中比较详尽，这里仅对比较重要的 CSR 提供一个索引以供复习方便。
 
@@ -88,3 +88,26 @@ pub struct TaskContext {
 删除了 `trap.S` 中 `__restore` 的 `move $sp, $a0`，因为 `__switch` 已正确修改了 `$sp` 的值.
 
 `init_app_cx` 初始化一个具体 app 的上下文，其中调用 `app_init_context` 初始化上下文的各字段. `goto_restore` 调用 `__restore` 并将获取的上下文放回. 
+
+### 时钟
+
+loongarch 上的各种中断会被处理器采样至 ESTAT.IS 这一中断状态位上，与 ECFG.LIE 的局部中断使能位进行按位与运算后，得到 13 位的中断向量 int_vec. 若全局中断使能 CRMD.IE 为 1 则处理器认为有需要响应的中断.
+
+时钟相关的寄存器有定时器配置 TCFG 和定时器数值 TVAL. 在 TCFG.En 中开启中断，时钟频率由 TCFG.Initval 决定.
+
+开启时钟中断代码如下：
+
+```rust
+pub fn enable_timer_interrupt() {
+    Ticlr::read().clear(); //清除时钟专断
+    Tcfg::read()
+        .set_enable(true) //开启计时
+        .set_loop(true) //开启循环
+        .set_tval(0x100000usize) //设置中断间隔时间
+        .flush(); //写入计时器的配置
+    Ecfg::read().set_local_interrupt(11, true); //开启局部使能中断
+    Crmd::read().set_interrupt_enable(true); //开启全局中断
+}
+```
+
+还针对 Stable Counter 做了一个获取计时器的实现 `Time::read`.
