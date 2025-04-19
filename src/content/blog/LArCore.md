@@ -111,3 +111,33 @@ pub fn enable_timer_interrupt() {
 ```
 
 还针对 Stable Counter 做了一个获取计时器的实现 `Time::read`.
+
+## 第四章
+
+### 寄存器设计
+
+对于 loongarch 平台的寄存器操作或 IO 操作的支持不如 RISC-V 和 x86，因此我们实现 `Register` trait 用于手动操作。
+
+```rust
+pub trait Register {
+    fn read() -> Self;
+    fn write(&mut self);
+}
+```
+
+在 ch4 这个分支的 loongrCore/src/loong_arch/register 下对各个寄存器都进行了定义，最近的更改时间是 3 年以前. new_main 这个分支上仍存在 register，但在 master 分支上已经没有这个文件夹了，疑似 loongarch 提供了更好的寄存器支持，待查证。根据 commit `4fa17c4` feat: use new crate loongarch64:
+
+```rust
+ use loongarch64::cpu;
+ use loongarch64::register::*;
+```
+
+又有 `cpucfg rd, rj` 可以读取配置信息字，具体通过指定配置字号、配置助记名称和位下标进行读取，具体可见于龙芯的架构参考手册。这个指令实现在 ch4 分支中的 loongrCore/src/loong_arch/cpu.rs 下，在引入新的 `loongarch64` crate 后被删除. 实现起来也比较简单，最底层还是对 `asm!` 的调用.
+
+### 内存分配
+
+此处的 loongarch 参考的内存分配器应该是基于 [buddy_system_allocator](https://github.com/rcore-os/buddy_system_allocator/tree/master). 作者自行实现的分配器在 kernel/src/mm/system_allocator 下，文档中没有对这一部分的内容进行介绍.
+
+用 `Locked<T>` 这个结构体封装 `Mutex<T>`，对 `Locked<T>::new()` 实现 const 初始化以在编译时创建静态而且线程安全的全局变量以应对静态初始化的场景. 当然也具有更好的拓展性.
+
+bump 分配器分配内存之后，使用 buddy 分配器进行分配管理.
