@@ -191,4 +191,74 @@ RISC-V 是根据 SATP 寄存器上的 Mode 域决定分页机制的. 而 loongar
 
 ### 多级页表与地址空间实现
 
-> to be continue.
+loongarch rCore 中采用三级页表，因此对应修改页表大小，页大小规定为 `16kB` 会构成三级页表机制.
+
+根据基本页页表项格式，重新设置 `PTEFlags` 的各个字段. 同时对 `PTEFlags` 设置默认实现 `default()`，注意 P 和 W 位只存在于页表项中，而不在 TLB 中.
+
+然后对页表项 `PageTableEntry`，定义各种方法，主要的差异在于 loongarch 的页表项布局不同于 RISC-V，在 `new()` 方法中将 `ppn: PhysPageNum` 与 `flags: PTEFlags` 并运算.
+
+```rust
+impl PageTableEntry {
+    pub fn new(ppn: PhysPageNum, flags: PTEFlags) -> Self {
+        let mut bits = 0usize;
+        bits.set_bits(14..PALEN, ppn.0); //采用16kb大小的页
+        bits = bits | flags.bits;
+        PageTableEntry { bits }
+    }
+    ...
+}
+```
+
+<a id="pte"></a>
+
+根据 loongarch rCore 文档，与 RISC-V 不同，loongarch 的三级页表项的第1、2级页表并非页表项而仅是物理地址，只有最后一级页表的的页表项才是完整的页表项. *我对此存疑*，如果不检查各自页表项的访问合法性可能会出现问题.
+
+`get_pte_array` 说每一个页都有 2048 个页表项，这是由一个页的大小 `PAGE_SIZE = 0x4000` 即 `16kB` 且一个 `PageTableEntry` 为 `64 bits` 可以计算得 
+
+$
+(16 * 1024 * 8 bits) / (64 bits) = 2048
+$  
+
+所以才有
+
+```rust
+impl PhysPageNum {
+    pub fn get_pte_array(&self) -> &'static mut [PageTableEntry] {
+        let pa: PhysAddr = self.clone().into();
+        unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut PageTableEntry, 2048) }
+        //每一个页有2048个页表项
+    }
+    pub fn get_bytes_array(&self) -> &'static mut [u8] {
+        let pa: PhysAddr = self.clone().into();
+        unsafe { core::slice::from_raw_parts_mut(pa.0 as *mut u8, 16 * 1024) }
+    }
+}
+```
+
+`get_pte_array` 用于获取一个页中的所有页表项，`get_bytes_array` 中的 `pa.0 as *mut u8` 说明获取 16 * 1024 个 Bytes(u8 bits). 
+
+然后我们需要考虑寻找到一个 `PageTableEntry` 的过程. 下方的 `index()` 函数即是获取一个虚拟地址的三级页表索引.
+
+```rust
+impl VirtPageNum {
+    pub fn indexes(&self) -> [usize; 3] {
+        let mut vpn = self.0;
+        let mut idx = [0usize; 3];
+        for i in (0..3).rev() {
+            idx[i] = vpn & 2047; //2^11-1 每一页包含2048个页表项
+            vpn >>= 11;
+        }
+        idx
+    }
+}
+```
+
+`VirtPageNum` 是页内偏移之外的部分，也就是三段虚拟页号所在的部分. 每段虚拟页号都为 11 个比特. 很明显 2047 这里起到的是 MASK 一样的作用应当使用常量进行标注，用于取出每段虚拟页号.
+
+根据[先前所说](#pte)，`find_pte_create()` 和 `find_pte()` 在找到 PTE 后使用 `pte.is_zero()` 来判断有效性而非 `!pte.is_valid()`，因为非最后一级的页目录项只保存下一级目录的基地址. 其实我认为这是一种不好的设计，让 `PageTableEntry` 的形式变得十分不一致. 在 `map()` 这个方法上将 `flags` 与 `PTEFlags::default()` 求并而非 `PTEFlags::V`.
+
+***
+
+开启页表机制后就需要为内核和应用程序构建地址空间以实现地址转换. 在 loongarch 上使用直接映射窗口机制可以降低构建难度.
+
+loongarch 内核地址空间是用映射窗口完成映射，在 RISC-V rCore 中是建立恒等映射. 但两者的作用是一样的，都是让虚拟地址等于物理地址.
