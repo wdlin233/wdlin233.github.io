@@ -195,6 +195,25 @@ loongarch rCore 中采用三级页表，因此对应修改页表大小，页大�
 
 根据基本页页表项格式，重新设置 `PTEFlags` 的各个字段. 同时对 `PTEFlags` 设置默认实现 `default()`，注意 P 和 W 位只存在于页表项中，而不在 TLB 中.
 
+```rust
+bitflags! {
+    pub struct PTEFlags: usize {
+        const V = 1 << 0;
+        const D = 1 << 1;
+        const PLVL = 1 << 2;
+        const PLVH = 1 << 3;
+        const MATL = 1 << 4;
+        const MATH = 1 << 5;
+        const G = 1 << 6;
+        const P = 1 << 7;
+        const W = 1 << 8;
+        const NR = 1 << 61;
+        const NX = 1 << 62;
+        const RPLV = 1 << 63;
+    }
+}
+```
+
 然后对页表项 `PageTableEntry`，定义各种方法，主要的差异在于 loongarch 的页表项布局不同于 RISC-V，在 `new()` 方法中将 `ppn: PhysPageNum` 与 `flags: PTEFlags` 并运算.
 
 ```rust
@@ -261,4 +280,70 @@ impl VirtPageNum {
 
 开启页表机制后就需要为内核和应用程序构建地址空间以实现地址转换. 在 loongarch 上使用直接映射窗口机制可以降低构建难度.
 
-loongarch 内核地址空间是用映射窗口完成映射，在 RISC-V rCore 中是建立恒等映射. 但两者的作用是一样的，都是让虚拟地址等于物理地址.
+loongarch 内核地址空间是用映射窗口完成映射，在 RISC-V rCore 中是建立恒等映射. 但两者的作用是一样的，都是让虚拟地址等于物理地址. 实现直接映射窗口的代码如下：
+
+```assembly
+.section .text.init
+.global _start
+
+_start:
+0:
+    #设置映射窗口
+    addi.d $t0,$zero,0x11
+    csrwr $t0,0x180  #设置LOONGARCH_CSR_DMWIN0
+
+    la.global $t0,1f #加载标签 `1` 的地址到 $t0
+    jirl $zero, $t0,0
+1:
+    la.global $t0, sbss
+    la.global $t1, ebss
+    bgeu $t0, $t1, 3f   #bge如果前者大于等于后者则跳转
+2:
+    st.d $zero, $t0,0
+    addi.d $t0, $t0, 8
+    bltu $t0, $t1, 2b
+3:
+    bl main
+```
+
+写入 `0x11` 到 DMW0 寄存器，清零未初始化的数据段实现 BSS 段初始化，然后跳转 main 使得内核代码可以被正确执行.
+
+有了直接映射窗口，就可以删除逻辑段 `MapArea` 中的 `map_type` 字段，因为此时不再区分恒等映射和非恒等映射，逻辑段只有应用程序的非恒等映射.
+
+`MapArea` 中存在一个 `map_perm: MapPermission` 字段. `MapPermission` 是 `PTEFlags` 的子集，必然要对应修改. 可以对 `MapPermission` 实现默认方法 `default()` 设置其访问特权级为 PLV3.
+
+在 `from_elf` 中 loongarch rCore 不使用跳板页. 回顾 RISC-V rCore 是因为地址空间的切换需要进行 trap 上下文的保存和恢复，而仅有的 sscratch 寄存器不足以在 trap 上下文保存到内核栈的情况下完成周转. 而 loongarch 有 CRMD 的 PLV 字段变化以实现应用程序和内核地址空间的自动切换，并且有更多临时寄存器以供周转而无需 trap 页. 于是 loongarch rCore 可以通过 
+
+```rust
+memory_set.push(
+    MapArea::new(
+        user_stack_bottom.into(),
+        user_stack_top.into(),
+        MapPermission::default() | MapPermission::W,
+    ),
+    None,
+);
+``` 
+
+在内核栈上保存 trap 上下文. 但安全隐患就是内核栈如果溢出就会破坏内核. 然后我们就可以在 `trap::init()` 中配置相关寄存器以开启页表功能了.
+
+还有 TLB 重填需要实现. 在各个寄存器的处理上还是有点小繁琐. 好在有 `tlbfill`, `lddir` 和 `ldpte` 提供了足够的抽象. 具体的操作可以看文档，TLB 重填异常处理程序如下：
+
+```assembly
+    .section tlb_handler
+    .globl __tlb_rfill
+    .align 4
+__tlb_rfill:
+    csrwr $t0, 0x8B   # 保存t0的值到CSR_TLBRSAVE，以便后续恢复 $t0
+    csrrd $t0, 0x1B   # 读取PGD,类似于rcore中的token
+    lddir $t0, $t0, 3   # 访问页目录表PGD
+    lddir $t0, $t0, 1   # 访问页目录表PMD
+    ldpte $t0, 0   # 加载页表项，取回偶数号页表项
+    ldpte $t0, 1   # 加载页表项，取回奇数号页表项
+    tlbfill   # 填充TLB
+    csrrd $t0, 0x8B   # 恢复 $t0
+    #jr $ra
+    ertn
+```
+
+> tlb重填 to be continue.
