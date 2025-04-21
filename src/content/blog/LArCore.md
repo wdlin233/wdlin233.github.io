@@ -378,3 +378,21 @@ fn tlb_page_modify_handler() {
 ```
 
 前半部分就是取出当前出错的虚拟地址，将其对应的 `PageTableEntry` 的 Dirty 位进行修改. 后半涉及 TLB 的部分是在修改页表后同步 TLB 的过程. 使用 `tlbsrch` 指令搜索匹配的 TLB 项，若找到则会将 `TLBIDX` 寄存器的 `NE` (No Entry) 位设置为 `false`. `tlbrd` 和 `tlbwr` 各自对应读取和写回.
+
+## 第五章
+
+loongarch rCore 采用了不同的内核栈分配方式，`KernelStack` 包裹一个物理页帧 `FrameTracker`.
+
+```rust
+/// Kernelstack for app
+#[derive(Clone, Debug)]
+pub struct KernelStack {
+    frame:FrameTracker,
+}
+```
+
+在 RISC-V rCore 中则是以 `pub struct KernelStack(pub usize);` 为内核栈. 但或许可以认为在具体实现方法上二者的差别也不是很大，不如说 `FrameTracker` 只是对 `ppn(usize)` 的包裹，loongarch 上少了 `KSTACK_ALLOCATOR` 而用 `FrameTracker` 而已.
+
+不过在获取 Trap 上下文时，loongarch 是在内核栈中取得 `self.kernel_stack.get_trap_cx()`. 而 RISC-V 是在地址空间中通过 `PhysPageNum` 取得 `self.trap_cx_ppn.get_mut()`.
+
+因为内核栈配置的更改，在 `TaskControlBlock::new()`, `TaskControlBlock::fork()` 和 `TaskControlBlock::exec()` 中就针对此进行了改动，当然还有部分是针对 loongarch 本身架构的配置，因为 `exec()` 切换了地址空间，所以先前 TLB 中的内容就需要无效化，这就是 `invtlb` 指令的作用. 类似地在 `exit_current_and_run_next()` 中也有这样的设置，因为进程退出时会对资源进行回收，TLB 中的快照会造成访问错误，需要删除.
