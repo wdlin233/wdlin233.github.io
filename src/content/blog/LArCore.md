@@ -346,4 +346,35 @@ __tlb_rfill:
     ertn
 ```
 
-> tlb重填 to be continue.
+为完成 TLB 重填，还需要实现对 页修改 这一例外 `Exception(PageModifyFault)` 的处理. 在 RISC-V 上页表访问由硬件完成，因此某些位由硬件来设置. 但 loongarch 上全部又软件完成，包括 D(irty) 位.
+
+```rust
+/// Exception(PageModifyFault)的处理
+/// 页修改例外：store 操作的虚地址在 TLB 中找到了匹配，且 V=1，且特权等级合规的项，但是该页
+//  表项的 D 位为 0，将触发该例外
+fn tlb_page_modify_handler() {
+    // INFO!("PageModifyFault handler");
+    //找到对应的页表项，修改D位为1
+    let badv = TlbRBadv::read().get_val(); //出错虚拟地址
+    let vpn: VirtAddr = badv.into(); //虚拟地址
+    let vpn: VirtPageNum = vpn.floor(); //虚拟地址的虚拟页号
+    let token = current_user_token(); //根页表的地址
+    let page_table = PageTable::from_token(token);
+    let pte = page_table.find_pte(vpn).unwrap(); //获取页表项
+    pte.set_dirty(); //修改D位为1
+    unsafe {
+        asm!("tlbsrch", "tlbrd",); //根据TLBEHI的虚双页号查询TLB对应项
+    }
+    let tlbidx = TlbIdx::read(); //获取TLB项索引
+    assert_eq!(tlbidx.get_ne(), false);
+    let mut tlbelo0 = TLBELO::read(0); //获取TLB项0
+    let mut tlbelo1 = TLBELO::read(1); //获取TLB项1
+    tlbelo0.set_dirty(true).write();
+    tlbelo1.set_dirty(true).write();
+    unsafe {
+        asm!("tlbwr"); //重新将tlbelo写入tlb
+    }
+}
+```
+
+前半部分就是取出当前出错的虚拟地址，将其对应的 `PageTableEntry` 的 Dirty 位进行修改. 后半涉及 TLB 的部分是在修改页表后同步 TLB 的过程. 使用 `tlbsrch` 指令搜索匹配的 TLB 项，若找到则会将 `TLBIDX` 寄存器的 `NE` (No Entry) 位设置为 `false`. `tlbrd` 和 `tlbwr` 各自对应读取和写回.
