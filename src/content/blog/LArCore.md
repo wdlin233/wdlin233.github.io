@@ -396,3 +396,65 @@ pub struct KernelStack {
 不过在获取 Trap 上下文时，loongarch 是在内核栈中取得 `self.kernel_stack.get_trap_cx()`. 而 RISC-V 是在地址空间中通过 `PhysPageNum` 取得 `self.trap_cx_ppn.get_mut()`.
 
 因为内核栈配置的更改，在 `TaskControlBlock::new()`, `TaskControlBlock::fork()` 和 `TaskControlBlock::exec()` 中就针对此进行了改动，当然还有部分是针对 loongarch 本身架构的配置，因为 `exec()` 切换了地址空间，所以先前 TLB 中的内容就需要无效化，这就是 `invtlb` 指令的作用. 类似地在 `exit_current_and_run_next()` 中也有这样的设置，因为进程退出时会对资源进行回收，TLB 中的快照会造成访问错误，需要删除.
+
+## 第六章
+
+文件系统是纯用户态的实现，因此我们可以直接在 loongarch rCore 中使用. 但 QEMU 模拟的 loongarch 没有相关的 virtio-block 设备. 于是替换 `-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0` 为 `-device ahci,id=ahci0 \ -device ide-hd,drive=x0,bus=ahci0.0`.
+
+我们考虑开发 PCI 总线的驱动. loongarch 将设备和存储空间统一编址，IO 空间和 Memory 空间都使用 load/store 操作，仅在于所在地址段的不同. PCI 总线定义每个设备的配置空间总长度为 256 个字节，前 64 个字节称为配置头用于识别设备和访问方式等信息. 配置空间中存在 6 组独立的基址寄存器 (Base Address Registers, BAR) 以传递给软件这些设备所需的地址空间大小并接受软件对其配置的基地址.
+
+loongarch rCore 的 PCI 设备检测将 `pci` 库的某些实现方式由 I/O 端口访问改为 MMIO. 用 `Location::encode()` 方法构造内存地址. 在 `scan_bus` 扫描后，`dev.bars.iter().enumerate().for_each(|(index, bar)| {...})` 对 BAR 进行解析.
+
+设备需要通过**中断**与 CPU 通讯，此处使用 MSI 中断. 在 PCI 设备扫描中，如果检测到了 SATA 设备，使用 `enable(dev.loc)` 配置 MSI 中断. `enable()` 可以分步拆解如下步骤：
+
+```rust
+let orig = am.read16(ops, loc, PCI_COMMAND);
+// bit0     |bit1       |bit2          |bit3           |bit10
+// IO Space |MEM Space  |Bus Mastering |Special Cycles |PCI Interrupt Disable
+am.write32(ops, loc, PCI_COMMAND, (orig | 0x40f) as u32);
+```
+
+对 `PCI_COMMAND` 控制设备的基本行为，写入值 `0x40f` 以达成禁用传统 PCI 中断等一系列操作.
+
+```rust
+let mut cap_ptr = am.read8(ops, loc, PCI_CAP_PTR) as u16;
+while cap_ptr > 0 {
+    let cap_id = am.read8(ops, loc, cap_ptr);
+    if cap_id == PCI_CAP_ID_MSI {
+        // 找到 MSI 能力项
+        // ...
+    }
+    cap_ptr = am.read8(ops, loc, cap_ptr + 1) as u16; // 跳转到下一能力项
+}
+```
+
+遍历能力链表以找到 MSI 能力项.
+
+```rust
+MSI_IRQ += 1;
+let irq = MSI_IRQ;
+//检查是64位/32位模式
+// we offset all our irq numbers by 32
+if (orig_ctrl >> 16) & (1 << 7) != 0 {
+    // 64bit
+    am.write32(ops, loc, cap_ptr + PCI_MSI_DATA_64, irq + 32);
+} else {
+    // 32bit
+    am.write32(ops, loc, cap_ptr + PCI_MSI_DATA_32, irq + 32);
+}
+```
+
+`irq` 部分应该是中断号分配，全局中断号 `MSI_IRQ` 递增以保证唯一性. `write32()` 部分是在触发 MSI 中断时向桥片写入地址?. `irq + 32` 应该是避免与 Legacy 中断号发生冲突.
+
+```rust
+// enable MSI interrupt, assuming 64bit for now
+am.write32(ops, loc, cap_ptr + PCI_MSI_CTRL_CAP, orig_ctrl | 0x10000);
+msi_found = true;
+```
+
+启用 MSI 中断，若找不到 MSI 能力项会在之后退回传统中断.
+
+中间还有一段 `am.write32(..., 0x2ff0_0000)` 用于设置 MSI 的目标地址，负责将 MSI 消息转换为 HT 中断报文，这就依赖于桥片的地址转换功能.
+
+然后针对 SATA 协议和 AHCI 协议讲了很多东西，实际上我认为并不是针对初学者写作的，此处也略而不谈.
+
