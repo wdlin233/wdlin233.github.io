@@ -458,3 +458,52 @@ msi_found = true;
 
 然后针对 SATA 协议和 AHCI 协议讲了很多东西，实际上我认为并不是针对初学者写作的，此处也略而不谈.
 
+## 第八章
+
+可以说 loongarch rCore 与 RISC-V 除了寄存器上的差别，大体上只有多级页表、TLB、内核栈与跳板页的差异.
+
+对于进程控制块 `ProcessControlBlock` 和 `ProcessControlBlockInner` 没什么变化，但对于线程控制块 `TaskControlBlock`，由于我们将 Trap 上下文放在内核栈上，至此内核栈 `kstack` 成为会变化的元数据从而放在 `TaskControlBlockInner` 中，我们不需要从地址空间中获取 `trap_cx_ppn` 因此对其删除.
+
+`res: Option<TaskUserRes>` 是为线程资源，为线程控制块 `TaskControlBlockInner` 中的一部分. `TaskUserRes::alloc_user_res` 是为线程申请资源的实现方法. 由于线程之间共享进程的地址空间，所以理所当然第一步先获取 `process_inner`.
+
+```rust
+pub fn alloc_user_res(&self) {
+    let process = self.process.upgrade().unwrap();
+    let mut process_inner = process.inner_exclusive_access();
+    // alloc user stack
+    let ustack_bottom = ustack_bottom_from_tid(self.ustack_base, self.tid);
+    let ustack_top = ustack_bottom + USER_STACK_SIZE;
+    process_inner.memory_set.insert_area(
+        ustack_bottom.into(),
+        ustack_top.into(),
+        MapPermission::default() | MapPermission::W
+    );
+    // alloc trap_cx
+}
+```
+
+`alloc_user_res()` 应当分为两步，分配用户栈和分配 Trap 上下文. 在 loongarch 中因为 Trap 上下文保存在内核栈上，所以 Trap 上下文初始化的部分在 `TaskUserRes` 之外，`alloc_user_res()` 中就删去了这部分内容.
+
+在 `run_tasks()` 这一**进程切换**的方法中，相比 RISC-V 多出了
+
+```rust
+let pid = task.process.upgrade().unwrap().getpid();     // 获取进程 ID
+let pgd = task.get_user_token() << PAGE_SIZE_BITS;      // 计算页表基地址
+Pgdl::read().set_val(pgd).write();                      // 设置根页表寄存器
+Asid::read().set_asid(pid as u32).write();              // 设置ASID
+```
+
+这是因为进程切换，进程切换后需要去切换虚拟地址空间，并重设 ASID 以用于 TLB 条目区分不同进程. 在这之后
+
+```rust
+// 在进行线程切换的时候
+// 地址空间是相同的，并且pgd也是相同的
+// 每个线程都有自己的内核栈和用户栈，用户栈互相隔离
+unsafe {
+    asm!("invtlb 0x4,{},$r0",in(reg) pid);              // 无效化 TLB 条目
+}
+```
+
+清除旧进程的 TLB 条目以防止新进程使用错误的地址转换.
+
+做这些是因为在 loongarch 中对 TLB 的处理属于软件部分，因此需要我们手动操作.
