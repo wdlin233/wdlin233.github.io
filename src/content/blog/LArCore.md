@@ -13,6 +13,8 @@ description:
   记录了我在阅读 rCoreloongArch 文档过程中的总结.
 ---
 
+## Table of contents
+
 ## 第二章
 
 ### 特权级架构
