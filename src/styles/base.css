@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@plugin '@tailwindcss/typography';
 
 @layer base {
   :root,
@@ -68,7 +69,7 @@
     @apply hidden;
   }
   .prose .katex-display {
-    @apply text-foreground;
+    @apply text-skin-base;
   }
 
   /* ===== scrollbar ===== */

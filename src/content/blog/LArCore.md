@@ -36,7 +36,7 @@ EENTRY CSR 是除了 TLB重填例外 和 机器错误 的入口地址. 其余两
 可以在例外配置 ECFG 的 VS 段中设置 `VS != 0` 以设置不同的例外入口，或者说入口的值为
 
 $$
-2^(CSR.ECFG.VS + 2) times (ecode + 64)
+2^{CSR.ECFG.VS + 2} \times (ecode + 64)
 $$
 
 此时，各例外和中断间的入口地址间距是 $2^VS$ 条指令. 统一入口是一种节省地址空间的策略. 使用多入口时，硬件可直接跳转到对应处理程序，省去软件判断例外类型的步骤，减少中断响应延迟. 不过在 rCoreloongArch 中采用统一的入口地址.
@@ -236,9 +236,9 @@ impl PageTableEntry {
 
 `get_pte_array` 说每一个页都有 2048 个页表项，这是由一个页的大小 `PAGE_SIZE = 0x4000` 即 `16kB` 且一个 `PageTableEntry` 为 `64 bits` 可以计算得 
 
-$
-(16 * 1024 * 8 bits) / (64 bits) = 2048
-$  
+$$
+(16 * 1024 * 8 bits) \div (64 bits) = 2048
+$$
 
 所以才有
 
