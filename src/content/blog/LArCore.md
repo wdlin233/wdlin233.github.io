@@ -1,7 +1,7 @@
 ---
 author: wdlin
-pubDatetime: 2025-04-18T15:50:00+08:00
-modDatetime: 2025-04-18T15:54:00+08:00
+pubDatetime: 2025-04-18T15:50:00
+modDatetime: 2025-04-26T20:31:00
 title: rCoreloongArch 学习笔记
 slug: rCoreloongArch
 featured: false
@@ -10,7 +10,7 @@ tags:
   - rCore
   - OS
 description:
-  rCoreloongArch 学习笔记.
+  记录了我在阅读 rCoreloongArch 文档过程中的总结.
 ---
 
 ## 第二章

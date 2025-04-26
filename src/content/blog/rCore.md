@@ -1,8 +1,8 @@
 ---
 author: wdlin
-pubDatetime: 2025-03-23T21:13:00+08:00
-modDatetime: 2025-03-23T21:13:06+08:00
-title: rCore Learning Notes
+pubDatetime: 2025-03-23T21:13:00
+modDatetime: 2025-03-23T21:13:06
+title: rCore (RISC-V) 学习笔记
 slug: rCore-note
 featured: false
 draft: false
@@ -11,8 +11,10 @@ tags:
   - rCore
   - OS
 description:
-  rCore structures learning notes. 
+  在学习 rCore 操作系统内核时的各种总结和反思. 
 ---
+
+> 一些内容还有待整理，这并不是一个完善的学习笔记.
 
 ## 特权级切换
 
