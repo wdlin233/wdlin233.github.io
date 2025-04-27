@@ -16,13 +16,438 @@ description:
 
 > 一些内容还有待整理，这并不是一个完善的学习笔记.
 
+这是我在参与开源操作系统训练营过程中，记录和总结反思 rCore 的学习笔记，实验指导手册在[这里](https://learningos.cn/rCore-Camp-Guide-2025S/)，但又一定程度上参考了往年的[文档](https://rcore-os.cn/rCore-Tutorial-Book-v3/index.html).
+
 ## Table of contents
 
-## 特权级切换
+## ch1 基本环境
 
-从 `syscall` 开始，`syscall` 的调用次数是在 `TaskControlBlockInner` 下的 `TaskInfoBlock` 自定义模块下的哈希表中被定义，自定义的任务运行时间统计 `RunningTimeInfo` 也在于此。获取任务的信息，就是访问这个 `TCBInner`.
+### 内核启动
+
+我们通过QEMU模拟CPU加电的执行过程：
+
+```makefile
+# os/Makefile
+run-inner: build
+	@qemu-system-riscv64 \
+		-machine virt \
+		-nographic \
+		-bios $(BOOTLOADER) \
+		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+```
+
+其中 `-bios $(BOOTLOADER)` 在硬件内存中的固定位置 `0x80000000` 处放置了一个 BootLoader 程序 RustSBI. `-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)` 这个参数表示硬件内存中的特定位置 `$(KERNEL_ENTRY_PA)` 放置了操作系统的二进制代码 `$(KERNEL_BIN)`，具体在此处 `$(KERNEL_ENTRY_PA)` 的值是 `0x80200000` .
+
+当我们执行包含上次参数的 qemu-system-riscv64 软件，就意味给这台虚拟的 RISC-V64 计算机加电了. 此时，CPU的其它通用寄存器清零，而PC寄存器会指向 `0x1000` 的位置，即 CPU 加电后执行的第一条指令的位置（固化在硬件中的一小段引导代码），它会很快跳转到 `0x80000000` 处， 即 RustSBI 的第一条指令. 这个过程可以通过 gdb 的逐句执行清晰看出.
+
+RustSBI 完成基本的硬件初始化后， 会跳转操作系统的二进制代码 `$(KERNEL_BIN)` 所在内存位置 `0x80200000` ，执行操作系统的第一条指令。 这时我们的编写的操作系统才开始正式工作。
+
+其中， `0x80000000` 是QEMU的硬件模拟代码中设定好的 `Bootloader` 的起始地址，`0x80200000` 是 RustSBI 的代码中设定好的操作系统**起始地址**.
+
+> SBI 是 RISC-V 的一种底层规范，操作系统内核可直接调用SBI提供的底层功能，如关机、显示字符串等.
+
+应用程序访问操作系统提供的系统调用的指令是 `ecall` ，操作系统访问 RustSBI 的SBI调用的指令也是 `ecall`. 但他们的特权级是不一样的，RustSBI 位于 M 态，通过 `ecall` 指令，可以完成从弱特权级到强特权级的转换.
+
+```rust
+// os/src/sbi.rs
+fn sbi_call(which: usize, arg0: usize, arg1: usize, arg2: usize) -> usize {
+    let mut ret;
+    unsafe {
+        llvm_asm!("ecall"
+            : "={x10}" (ret)
+            : "{x10}" (arg0), "{x11}" (arg1), "{x12}" (arg2), "{x17}" (which)
+...
+
+// os/src/main.rs
+const SBI_SHUTDOWN: usize = 8;
+
+pub fn shutdown() -> ! {
+    sbi_call(SBI_SHUTDOWN, 0, 0, 0);
+    panic!("It should shutdown!");
+}
+
+#[no_mangle]
+extern "C" fn _start() {
+    shutdown();
+}
+```
+
+但这样直接加载运行是不行的，需要在 Cargo 中配置链接脚本以调整内存布局和栈空间，让入口地址为 RustSBI 约定的 `0x80200000`.
+
+在 `os/src/linker.ld` 中指定了 `ENTRY(_start)`, `BASE_ADDRESS` 和各个逻辑段，在 `os/src/entry.asm` 中初始化栈空间. 在 `os/src/main.rs` 中又根据链接脚本中给出的全局符号清空了 `.bss` 段.
+
+### 理解内存
+
+CPU 可以通过物理地址来**逐字节**访问物理内存中保存的数据，通常以 `0x80000000` 为起始内存地址.
+
+#### 函数调用: jalr 与 ret
+
+在调用函数时，不同于分支、循环等其他控制流结构，被调用函数返回时，需要跳转到一个**运行时确定**（确切地说是在函数调用发生的时候）的地址，而不是一个编译器固定下来的地址。
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/function-call.png" alt="Function Call" style="zoom:67%;" />
+
+对此，指令集必须给用于函数调用的跳转指令一些额外的能力，而不只是单纯的跳转。在 RISC-V 架构上，有两条指令即符合这样的特征.
+
+| 名称             | 指令             | 指令功能                         |
+| ---------------- | ---------------- | -------------------------------- |
+| 跳转并链接       | jal rd, imm      | rd <- pc + 4<br />pc <- pc + imm |
+| 寄存器跳转并链接 | jalr rd, imm(rs) | rd <- pc + 4<br />pc <- rs + imm |
+
+这两条指令除了设置 pc 寄存器完成跳转功能之外，还将当前跳转指令的下一条指令地址保存在 `rd` 寄存器中。在 RISC-V 架构中， 通常使用 **`ra` 寄存器**（即 `x1` 寄存器）作为其中的 `rd` ，因此在函数返回的时候，只需跳转回 `ra` 所保存的地址即可。
+
+函数返回时，我们常使用一条伪指令 (Pseudo Instruction) 跳转回调用之前的位置: `ret` . 它会被汇编器翻译为 
+
+```assembly
+jalr x0, 0(x1)
+```
+
+含义为**跳转到寄存器 `ra` 保存的物理地址**，由于 **`x0` 是一个恒为 0 的寄存器**，任何写入到 `x0` 的值都会被直接丢弃，在 `rd` 中，保存这一步被省略，即不需要保存返回地址.
+
+进行函数调用的时候，我们通过 `jalr` 指令 保存返回地址并实现跳转；而在函数即将返回的时候，则通过 `ret` 指令跳转之前的下一条指令继续执行。这**两条指令**实现了函数调用流程的核心机制。
+
+#### 函数调用上下文与调用规范
+
+编译器除了函数调用的相关指令之外，基本不使用 `ra` 寄存器。意即，如果在函数中没有调用其他函数，那 `ra` 的值不会变化，函数调用流程能正常工作。但是，实际编写代码时，我们常常会遇到函数**多层嵌套调用**的情形。
+
+因此我们需要保证，在一个函数调用子函数的前后，包括 `ra` 寄存器在内的所有通用寄存器的值都不能发生变化。 我们将由于函数调用，在控制流转移前后需要保持不变的**寄存器集合**称之为**函数调用上下文** context.
+
+在调用子函数之前，我们需要在内存中的一个区域保存 (Save) 函数调用上下文中的寄存器；而之后我们会从内存中同样的区域读取并恢复 (Restore) 函数调用上下文中的寄存器。
+
+函数调用上下文中的寄存器被分为如下[两类](https://blog.csdn.net/Edidaughter/article/details/122334074)：
+
+- **被调用者保存** (Callee-Saved) 寄存器，即被调用的函数保证调用它前后，这些寄存器保持不变；
+- **调用者保存** (Caller-Saved) 寄存器，被调用的函数可能会覆盖这些寄存器。
+
+寄存器可见于[RISC-V 架构的 C 语言调用规范](https://riscv.org/wp-content/uploads/2015/01/riscv-calling.pdf)或[Cornell](http://www.cs.cornell.edu/courses/cs3410/2019sp/schedule/slides/10-calling-notes-bw.pdf).
+
+函数调用上下文由调用者和被调用者分别保存，其具体过程分别如下：
+
+- 调用者：首先保存不希望在函数调用过程中发生变化的调用者保存寄存器，然后通过 jal/jalr 指令调用子函数，返回回来之后恢复这些寄存器。
+- 被调用者：在函数开头保存函数执行过程中被用到的被调用者保存寄存器，然后执行函数，在退出之前恢复这些寄存器。
+
+无论是调用者还是被调用者，都会因调用行为而需要两段匹配的保存和恢复寄存器的汇编代码，可以分别将其称为开场白 (Prologue) 和收场白 (Epilogue)，它们会由编译器帮我们自动插入。
+
+#### 栈指针与栈帧
+
+函数调用上下文的保存/恢复的寄存器保存在栈(Stack)中 . `sp`(即`x2`寄存器) 用来保存**栈指针** (Stack Pointer)，它是一个指向了内存中**已经用过的位置**的一个地址。
+
+在 RISC-V 架构中，栈是从高地址到低地址增长的。在一个函数中，作为起始的**开场白**负责分配一块新的栈空间，其实它只需要知道需要空间的大小，然后将 `sp` 的值减小相应的字节数即可，于是物理地址区间 [新sp,旧sp) 对应的物理内存便可以被用于，函数调用上下文的保存/恢复等，这块物理内存被称为这个函数的**栈帧** (Stackframe).
+
+同理，函数中作为结尾的**收场白**负责将开场白分配的栈帧回收，这也仅仅需要 将 `sp` 的值增加相同的字节数回到分配之前的状态。这也可以解释为什么 `sp` 是一个**被调用者保存寄存器**。
+
+函数调用过程中，栈帧分配与`sp`寄存器变化如图：
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/CallStack.png" alt= "栈指针" style="zoom:33%;" />
+
+一个函数的栈帧内容可能如下.
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/StackFrame.png" alt="StackFrame" style="zoom:67%;" />
+
+它的开头和结尾分别在 `sp(x2)` 和 `fp(s0)` 所指向的地址。按照地址从高到低分别有以下内容，它们都是通过 `sp` 加上一个偏移量来访问的：
+
+- `ra` 寄存器保存其返回之后的跳转地址，是一个调用者保存寄存器；
+- 父亲栈帧的结束地址 `fp`，是一个被调用者保存寄存器；
+- 其他被调用者保存寄存器 `s1`~`s11`；
+- 函数所使用到的局部变量。
+
+因此，栈上实际上保存了一条完整的函数调用链，通过适当的方式我们可以实现对它的跟踪。
+
+#### 程序内存布局
+
+当我们将源代码编译为可执行文件之后，会得到一个看似充满杂乱无章字节的文件。这些字节至少可以分成代码和数据两部分，代码部分由一条条可以被 CPU 解码并执行的指令组成，而数据部分只被 CPU 视作可用的存储空间。
+
+我们还可根据其功能，进一步把两个部分划分为更小的单位： **段** (Section) . 不同的段会被编译器放置在内存不同的位置上，这构成了程序的 **内存布局** (Memory Layout)。一种典型的程序相对内存布局如下：
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/MemoryLayout.png" alt="内存布局" style="zoom:33%;" />
+
+代码部分只有代码段 `.text` 一个段，存放程序的所有汇编代码。
+
+数据部分则还可以继续细化：
+
+- 已初始化数据段保存程序中那些已初始化的全局数据，分为 `.rodata` 和 `.data` 两部分。前者存放只读的全局数据，通常是常数或常量字符串等；而后者存放可修改的全局数据。
+- 未初始化数据段 `.bss` 保存程序中那些未初始化的全局数据，通常由程序的加载者代为进行零初始化，也即将这块区域逐字节清零；
+- **堆** (heap) 区域用来存放程序运行时动态分配的数据，如 C/C++ 中的 `malloc`/`new` 分配到的数据本体就放在堆区域，它向高地址增长；
+- 栈区域 stack 不仅用作函数调用上下文的保存与恢复，每个函数作用域内的局部变量也被编译器放在它的栈帧内。它向低地址增长。
+
+对于堆上的动态变量，其本体被保存在堆上，大小在**运行时**才能确定。而我们只能直接访问栈上或者全局数据段中的**编译期确定大小**的变量。 因此，我们需要通过一个（运行时分配内存得到的）指向堆上数据的指针来访问它。指针的位宽确实在编译期就能够确定。该指针即可以作为局部变量放在栈帧内，也可以作为全局变量放在全局数据段中。
+
+## ch2 批处理系统
+
+### 应用程序构建
+
+对`ci-user/user/src/bin`中的任何一个文件，可以看到`main`函数和外部库引用：
+
+```rust
+#[macro_use]
+extern crate user_lib;
+```
+
+这个外部库其实就是 `user/src` 目录下的 `lib.rs` 以及它引用的若干子模块。 在 `user/Cargo.toml` 中我们对于库的名字进行了设置： `name = "user_lib"` 。 它作为应用程序所依赖的用户库，等价于其他编程语言提供的标准库。
+
+```toml
+[package]
+name = "user_lib"
+version = "0.1.0"
+authors = ["Yifan Wu <shinbokuow@163.com>"]
+edition = "2018"
+```
+
+在`lib.rs`中，定义用户库的入口点`_start`.
+
+```rust
+#[no_mangle]
+#[link_section = ".text.entry"]
+pub extern "C" fn _start() -> ! {
+    clear_bss();
+    exit(main());
+}
+```
+
+第 2 行使用 Rust 的宏将 `_start` 这段代码编译后的汇编代码中放在一个名为 `.text.entry` 的代码段中，方便我们在后续链接的时候 调整它的位置使得它能够作为用户库的入口。
+
+用`clear_bss()`函数手动清空`.bss`段. `clear_bss()`定义在`lib.rs`中。关于内存布局中的各数据段，参考[静态存储区（Bss、数据段、代码段），堆，栈-CSDN博客](https://blog.csdn.net/sgc_bf/article/details/101227860).
+
+```rust
+// ci-user/user/src/lib.rs
+#![feature(linkage)]    // 启用弱链接特性
+
+#[linkage = "weak"]
+#[no_mangle]
+fn main() -> i32 {
+    panic!("Cannot find main!");
+}
+```
+
+在 `lib.rs` 中定义一个 `main` 函数，其具有弱链接特性。在编译过程中，弱符号遇到强符号时，会选择强符号而丢掉弱符号。参考[嵌入式C语言自我修养 09：链接过程中的强符号和弱符号 - 知乎](https://zhuanlan.zhihu.com/p/55768978). 由此实现 `bin` 目录下的 `main` 替换了 `lib.rs` 下的 `main`.
+
+### 系统调用
+
+<a id="syscall"></a>
+在系统调用时，我们需要将对应的参数储存在寄存器中，我们需要了解RISC-V架构中寄存器的相关知识[RISV-V架构的寄存器介绍_riscv寄存器-CSDN博客](https://blog.csdn.net/weixin_42031299/article/details/132839814).
+
+在 `syscall` 中，应用程序来通过 `ecall` 调用批处理系统提供的接口，由于应用程序运行在 U 模式， `ecall` 指令会触发名为 `Environment call from U-mode` 的<u>异常</u>，并 Trap 进入 S 模式.
+
+约定如下系统调用.
+
+```rust
+/// 功能：将内存中缓冲区中的数据写入文件。
+/// 参数：`fd` 表示待写入文件的文件描述符；
+///      `buf` 表示内存中缓冲区的起始地址；
+///      `len` 表示内存中缓冲区的长度。
+/// 返回值：返回成功写入的长度。
+/// syscall ID：64
+fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize;
+
+/// 功能：退出应用程序并将返回值告知批处理系统。
+/// 参数：`xstate` 表示应用程序的返回值。
+/// 返回值：该系统调用不应该返回。
+/// syscall ID：93
+fn sys_exit(xstate: usize) -> !;
+```
+
+系统调用实际上是汇编指令级的二进制接口，这里只给出使用 Rust 语言描述的版本。在实际调用的时候，需要按照 RISC-V 调用规范在合适的寄存器中放置系统调用的参数，然后执行 `ecall` 指令触发 Trap. 在 Trap 回到 U 模式的应用程序代码之后，会从 `ecall` 的 下一条指令继续执行，同时我们能够按照调用规范在合适的寄存器中读取返回值。
+
+<a id="a7"></a>
+
+约定寄存器 `a0~a6` 保存系统调用的参数， `a0~a1` 保存系统调用的**返回值**。寄存器 `a7` 用来传递 **syscall ID**，这是因为所有的 syscall 都是通过 `ecall` 指令触发的，除了各输入参数之外我们还额外需要一个寄存器，保存要请求哪个系统调用。
+
+由于这超出了 Rust 语言的表达能力，我们需要在代码中使用内嵌汇编来完成参数/返回值绑定和 `ecall` 指令的插入.
+
+```rust
+// user/src/syscall.rs
+fn syscall(id: usize, args: [usize; 3]) -> isize {
+   let mut ret: isize;
+   unsafe {
+       core::arch::asm!( // v3: llvm_asm!(...)
+           "ecall",
+           inlateout("x10") args[0] => ret, // x10 - a0
+           in("x11") args[1],
+           in("x12") args[2],
+           in("x17") id // x17 - a7
+       );
+   }
+   ret
+}
+```
+
+这里使用了Rust的内联汇编宏`asm!`，参考[Inline assembly - The Rust Reference](https://doc.rust-lang.org/nightly/reference/inline-assembly.html). 由于Rust 编译器无法判定汇编代码的安全性，所以我们需要将其包裹在 unsafe 块中.
+
+简而言之，这条汇编代码的执行结果是以寄存器 `a0~a2` 来保存系统调用的参数，以及寄存器 `a7` 保存 syscall ID， 返回值通过寄存器 `a0` 传递给局部变量 `ret`.
+
+在 `inlateout("x10") args[0] => ret`：
+
+- 传值：`args[0]` 是输入值，它会在调用 `ecall` 之前被加载到 `x10` 寄存器。
+- 返回结果：执行完 `ecall` 后，`x10` 的值变为结果值，并把这个结果存入变量 `ret`.
+
+***
+
+于是我们基于`syscall`就可以实现一些基本的系统功能：
+
+```rust
+// user/src/syscall.rs
+const SYSCALL_WRITE: usize = 64;
+const SYSCALL_EXIT: usize = 93;
+
+pub fn sys_write(fd: usize, buffer: &[u8]) -> isize {
+    syscall(SYSCALL_WRITE, [fd, buffer.as_ptr() as usize, buffer.len()])
+}
+
+pub fn sys_exit(xstate: i32) -> isize {
+    syscall(SYSCALL_EXIT, [xstate as usize, 0, 0])
+}
+```
+
+`sys_write` 使用一个 `&[u8]` 切片类型来描述缓冲区，这是一个**胖指针** (Fat Pointer)，里面既包含缓冲区的起始地址，还包含缓冲区的长度。我们可以分别通过 `as_ptr` 和 `len` 方法取出它们，并独立的作为实际的系统调用参数。[第 8 条：熟悉引用和指针类型 - Effective Rust 中文版](https://rustx-labs.github.io/effective-rust-cn/chapter_1/item8-references&pointer.html#胖指针类型)与[Rust字符串胖指针到底是胖在栈上还是堆上了？ - 知乎](https://zhuanlan.zhihu.com/p/386488545).
+
+在`usr_lib`中封装，更加接近在 Linux 等平台的实际体验，有
+
+```rust
+// user/src/lib.rs
+use syscall::*;
+
+pub fn write(fd: usize, buf: &[u8]) -> isize { sys_write(fd, buf) }
+pub fn exit(exit_code: i32) -> isize { sys_exit(exit_code) }
+```
+
+由此可实现`console` 子模块中 `Stdout::write_str`.
+
+> 执行和测试应用程序：在rCore-v3文档中，在实现操作系统前，直接执行和测试了应用程序，这是基于QEMU的用户态模拟`User mode`. 因为`system mode`模拟整个machine，可以运行其上的guest OS；而`user mode`是在host上运行一个guest的程序. 
+>
+> 参考 [qemu user mode速记 | Sherlock's blog](https://wangzhou.github.io/qemu-user-mode速记/).
+
+
+### 特权级切换实现 
+
+此处我们仅考虑当 CPU 在 U 特权级运行用户程序的时候触发 Trap，并切换到 S 特权级的批处理操作系统。
+
+在 RISC-V 架构中，关于 Trap 有一条重要的规则：**在 Trap 前的特权级不会高于Trap后的特权级**。因此如果触发 Trap 之后切换到 S 特权级（Trap 到 S）， 说明 Trap 发生之前 CPU 只能运行在 S/U 特权级。操作系统会使用 S 特权级中与 Trap 相关的 **控制状态寄存器** (CSR, Control and Status Register) 来辅助 Trap 处理。
+
+<a id="TrapCSR"></a>
+
+| CSR 名      | 该 CSR 与 Trap 相关的功能                                    |
+| ----------- | ------------------------------------------------------------ |
+| **sstatus** | `SPP` 等字段给出 Trap 发生之前 CPU 处在哪个特权级（S/U）等信息 |
+| sepc        | 当 Trap 是一个异常的时候，记录 Trap 发生之前执行的最后一条指令的地址 |
+| scause      | 描述 Trap 的原因                                             |
+| stval       | 给出 Trap 附加信息                                           |
+| stvec       | 控制 Trap 处理代码的入口地址                                 |
+
+涉及特权级切换的应用程序的调用情况[如图所示](#privilege level). 应用程序的上下文可以分为通用寄存器和栈两部分。通用寄存器部分先前提及过；而对于栈，需要两个执行流，并且其记录的**执行历史**的栈所对应的内存区域不相交，就不会产生覆盖问题，无需进行保存/恢复。
+
+<a id="privilege level"></a>
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/EnvironmentCallFlow.png" alt="三态特权级切换" style="zoom:67%;" />
+
+
+网上有一些博客对此有更详细的介绍：[RISC-V 32架构实践专题九（从零开始写操作系统-trap机制）_mtval寄存器-CSDN博客](https://blog.csdn.net/weixin_53479532/article/details/136611555), 与[rCore学习笔记 018-实现特权级的切换 - winddevil - 博客园](https://www.cnblogs.com/chenhan-winddevil/p/18327630). 在RISC-V Reader中也有关于CSR的描述.
+
+#### 硬件控制: 寄存器
+
+当 CPU 执行完一条指令并准备从用户特权级 Trap 到 S 特权级的时候，硬件会自动帮我们做这些事情：
+
+- `sstatus` 的 `SPP` 字段会被修改为 CPU 当前的特权级（U/S）。
+- `sepc` 会被修改为 Trap 回来之后默认会执行的下一条指令的地址。当 Trap 是一个异常的时候，它实际会被修改成 Trap 之前执行的最后一条 指令的地址。
+- `scause/stval` 分别会被修改成这次 Trap 的原因以及相关的附加信息。
+- CPU 会跳转到 `stvec` 所设置的 Trap 处理入口地址，并将当前特权级设置为 S ，然后开始向下执行。
+
+而当 CPU 完成 Trap 处理准备返回的时候，需要通过一条 S 特权级的特权指令 `sret` 来完成，这一条指令具体完成以下功能：
+
+- CPU 会将当前的特权级按照 `sstatus` 的 `SPP` 字段设置为 U 或者 S ；
+- CPU 会跳转到 `sepc` 寄存器指向的那条指令，然后开始向下执行。
+
+#### 用户栈与内核栈
+
+在 Trap 触发的一瞬间， CPU 就会切换到 S 特权级并跳转到 `stvec` 所指示的位置。在正式进入 S 特权级的 Trap 处理之前，<u>我们必须保存**原执行流的寄存器状态**</u>，这一般通过**栈**来完成。
+
+声明两个类型 `KernelStack` 和 `UserStack` 分别表示用户栈和内核栈，它们都只是字节数组的简单包装.
+
+```rust
+// os/src/batch.rs
+
+const USER_STACK_SIZE: usize = 4096 * 2;
+const KERNEL_STACK_SIZE: usize = 4096 * 2;
+
+#[repr(align(4096))]
+struct KernelStack {
+	data: [u8; KERNEL_STACK_SIZE],
+}
+
+#[repr(align(4096))]
+struct UserStack {
+	data: [u8; USER_STACK_SIZE],
+}
+
+static KERNEL_STACK: KernelStack = KernelStack { data: [0; KERNEL_STACK_SIZE] };
+static USER_STACK: UserStack = UserStack { data: [0; USER_STACK_SIZE] };
+```
+
+常数 `USER_STACK_SIZE` 和 `KERNEL_STACK_SIZE` 指出内核栈和用户栈的大小分别为 8KiB，以全局变量的形式实例化在批处理操作系统的 .bss 段中。
+
+为两个类型实现了 `get_sp` 方法来获取栈顶地址。由于在 RISC-V 中栈是向下增长的，我们只需返回包裹的数组的终止地址，以用户栈类型 `UserStack` 为例：
+
+```rust
+impl UserStack {
+	fn get_sp(&self) -> usize {
+		self.data.as_ptr() as usize + USER_STACK_SIZE
+	}
+}
+```
+
+**换栈**是非常简单的，只需将 `sp` 寄存器的值修改为 `get_sp` 的返回值即可.
+
+接着，是Trap上下文 `TrapContext`，即在 Trap 发生时需要保存的物理资源内容，并将其一起放在一个名为 `TrapContext` 的类型中，定义如下：
+
+```rust
+// os/src/trap/context.rs
+#[repr(C)]
+pub struct TrapContext {
+	pub x: [usize; 32],
+	pub sstatus: Sstatus,
+	pub sepc: usize,
+}
+```
+
+包含所有的通用寄存器 `x0`~`x31` ，还有 `sstatus` 和 `sepc` . 
+
+#### Trap管理
+
+在批处理操作系统初始化的时候，我们需要修改 `stvec` [寄存器](#TrapCSR)来指向正确的 Trap 处理入口点。
+
+```rust
+// os/src/trap/mod.rs
+core::arch::global_asm!(include_str!("trap.S"));
+pub fn init() {
+	extern "C" { fn __alltraps(); }
+	unsafe {
+		stvec::write(__alltraps as usize, TrapMode::Direct);
+	}
+}
+```
+
+## ch3 特权级切换
+
+从 `syscall` 开始，`syscall` 的调用次数是在 `TaskControlBlockInner` 下的 `TaskInfoBlock` 自定义模块下的哈希表中被定义，自定义的任务运行时间统计 `RunningTimeInfo` 也在于此。获取任务的信息，就是访问这个 `TaskInfoBlock`.
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskInfoBlock {
+    pub syscall_times: BTreeMap<usize, u32>,
+    pub running_times: RunningTimeInfo,
+}
+```
 
 进入 `trap_hander` 意味着从用户态进入了内核态，此时停止用户态计时开启内核态计时，返回用户态时相反. `Processor` 中定义的 `user_timer_us` 和 `kernel_timer_us` 是一个临时的值，在调用计时停止的函数时，会将值赋给具体任务中的计时器。
+
+```rust
+pub fn trap_handler() -> ! {
+    user_timer_stop();
+    kernel_timer_start();
+    ...
+    kernel_timer_stop();
+    user_timer_start();
+    trap_return();
+}
+```
 
 在进程转为 `Blocked` , `Ready(Suspended)` 或退出时会终止内核态计时，在 `task_current_task` 中。线程调度(schedule)时会开启内核态计时。这应当是没错的，因为只有程序处于 `Running` 状态时，才被认为是在执行。而进程状态的转换必须在内核态实现。在进程调度之后，开启新进程的内核态计时，之后通过 `trap_hander` 切回用户态。也就是说，此处进程状态的改变是旧进程内核态的结束和新进程内核态的开始。
 
@@ -34,11 +459,27 @@ description:
 
 上下文切换是通过 `__alltraps` 和 `__restore` 实现的. `__alltraps` 将 Trap 上下文保存在内核栈上，然后跳转 `trap_handler`（通过 `jr t1` 语句）；返回之后，`__restore` 从保存在内核栈上的 Trap 上下文恢复寄存器。
 
-`schedule` 中的 `__switch` 将当前的 `TaskContext` 指针和 `idle_task_cx_ptr` 交换，而 `run_task` 将 `idle_task_cx_ptr` 与下一个任务的交换。被切换的任务会将其 `PCB` 放入 `TASK_MANAGER` 的 `ready_queue` 中。
+`schedule` 中的 `__switch` 将当前的 `TaskContext` 指针和 `idle_task_cx_ptr` 交换，而 `run_task` 将 `idle_task_cx_ptr` 与下一个任务的交换。被切换的任务会将其 PCB 放入 `TASK_MANAGER` 的 `ready_queue` 中。
 
-`TASK_MANAGER` 是 `TaskManager` 的静态全局变量，掌管任务的就绪队列和终止队列。同一文件下的 `PID2PCB` 是由 `pid` 到 `PCB` 的 KV 键值对。
+事实上，它是来自两个不同应用的 Trap 执行流之间的切换。调用 `__switch` 之后直到它返回前的这段时间，原 Trap 执行流会先被暂停并被切换出去，CPU 转而运行另一个应用的 Trap 执行流。之后，原 Trap 执行流会从某一条 Trap 执行流（很可能不是之前切换到的那一条）切换回来继续执行，并最终返回。从实现的角度， `__switch` 和一个普通的函数之间的差别仅仅是它会换栈。
 
-## 内存管理
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/task_context.png" alt="Trap Hander1" style="zoom:67%;" />
+
+`__switch`在内核栈上的整体流程为：
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/switch-1.png" style="zoom:67%;" />
+
+阶段 [2]中，A 在自身的内核栈上，分配一块任务上下文的空间，在里面保存 CPU 当前的寄存器快照。
+
+阶段 [3]中，读取 B 的 `task_cx_ptr` 或者说 `task_cx_ptr2` 指向的那块内存，获取到 B 的内核栈栈顶位置，并复制给 `sp` 寄存器来换到 B 的内核栈。**换栈也就实现了执行流的切换** 。
+
+<img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/switch-2.png" style="zoom:67%;" />
+
+结果上，A 执行流 和 B 执行流的状态发生了互换， A 在保存任务上下文之后进入**暂停**状态，而 B 则**恢复**了**上下文**并在 CPU 上执行。
+
+`TASK_MANAGER` 是 `TaskManager` 的静态全局变量，掌管任务的就绪队列和终止队列。同一文件下的 `PID2PCB` 是由 `pid` 到 PCB 的 KV 键值对。
+
+## ch4 内存管理
 
 ### SATP, PTE and Address
 
@@ -52,6 +493,15 @@ PTE是页表项，有64位。保存的是3级PPN和VRWX等各标志位，高位�
 
 `PageTableEntry` = `PhysPageNum` + `PTEFlags`. `PTEFlags` 就是各标志位VRWX等的集合。
 
+```rust
+/// Create a new page table entry
+pub fn new(ppn: PhysPageNum, flags: PTEFlags) -> Self {
+	PageTableEntry {
+		bits: ppn.0 << 10 | flags.bits as usize,
+	}
+}
+```
+
 `VirtAddr` 和 `PhysAddr` 都是对 `usize` 的封装。
 
 ***
@@ -60,9 +510,56 @@ PTE是页表项，有64位。保存的是3级PPN和VRWX等各标志位，高位�
 
 然后就需要考虑物理页帧的分配回收，就有了 `FrameAllocator(Trait)` ，具体作用在 `StackFrameAllocator` 上. `StackFrameAllocator` 是对页号的分配实现对页帧的分配。
 
+```rust
+pub struct StackFrameAllocator {
+    current: usize,
+    end: usize,
+    recycled: Vec<usize>,
+}
+```
+
 `FRAME_ALLOCATOR` 是 `StackFrameAllocator` 封装后的全局实例，管理全局的物理页帧分配。
 
+```rust
+type FrameAllocatorImpl = StackFrameAllocator;
+lazy_static! {
+    /// frame allocator instance through lazy_static!
+    pub static ref FRAME_ALLOCATOR: UPSafeCell<FrameAllocatorImpl> =
+        unsafe { UPSafeCell::new(FrameAllocatorImpl::new()) };
+}
+```
+
 `FrameTracker` 是对 `PhysPageNum` 运用 RAII 思想的封装，`frame_alloc` 将会调用 `FRAME_ALLOCATOR` 下的 `alloc()` 返回包裹 `FrameTracker` 的 `Option`.
+
+```rust
+/// tracker for physical page frame allocation and deallocation
+pub struct FrameTracker {
+    /// physical page number
+    pub ppn: PhysPageNum,
+}
+```
+
+```rust
+impl FrameAllocator for StackFrameAllocator {
+	fn alloc(&mut self) -> Option<PhysPageNum> {
+		if let Some(ppn) = self.recycled.pop() {
+			Some(ppn.into())
+		} else if self.current == self.end {
+			None
+		} else {
+			self.current += 1;
+			Some((self.current - 1).into())
+		}
+	}
+}
+
+pub fn frame_alloc() -> Option<FrameTracker> {
+    FRAME_ALLOCATOR
+        .exclusive_access()
+        .alloc()
+        .map(FrameTracker::new)
+}
+```
 
 ***
 
@@ -83,6 +580,27 @@ pub fn get_pte_array(&self) -> &'static mut [PageTableEntry] {
 
 `map` 就是用 `find_pte_create` 获取 `PTE` 后将其内容修改为 `PhysPageNum` + `PTEFlags`. `unmap` 就是将其修改为 `PTE::empty()`. `translate` 在 `find_pte` 基础上加了一个解引用，`translate_va` 是 `VirtAddr` 到 `PhysAddr` 的映射。
 
+```rust
+pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+	let pte = self.find_pte_create(vpn).unwrap();
+	assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
+	*pte = PageTableEntry::new(ppn, flags | PTEFlags::V);
+}
+
+pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+	self.find_pte(vpn).map(|pte| *pte)
+}
+
+pub fn translate_va(&self, va: VirtAddr) -> Option<PhysAddr> {
+	self.find_pte(va.clone().floor()).map(|pte| {
+		let aligned_pa: PhysAddr = pte.ppn().into();
+		let offset = va.page_offset();
+		let aligned_pa_usize: usize = aligned_pa.into();
+		(aligned_pa_usize + offset).into()
+	})
+}
+```
+
 ***
 
 ### MemorySet
@@ -91,28 +609,101 @@ pub fn get_pte_array(&self) -> &'static mut [PageTableEntry] {
 
 `MapArea` 就是对连续的**虚拟地址**的表示，`VPNRange` 表示虚拟页号的范围； `BTreeMap<VirtPageNum, FrameTracker>` 是表示虚实地址映射的KV键值对；`MapType` 是映射方式，恒等映射就是将虚拟地址直接作为物理地址使用，`Framed` 意味着虚拟页面对应一个新的物理页帧；`MapPermission` 是 `PTEFlags` 的子集，仅一些简单的标志位，注意区分 `MapPermission` 是逻辑段的，而 `PTEFlags` 是 `PageTableEntry` 的一部分。
 
+```rust
+pub struct MapArea {
+    vpn_range: VPNRange,
+    data_frames: BTreeMap<VirtPageNum, FrameTracker>,
+    map_type: MapType,
+    map_perm: MapPermission,
+}
+```
+
 `MemorySet` 就是将 `PageTable` 和各 `MapArea` 组合为一个整体，地址空间是一系列有关联的逻辑段，这样就将虚拟地址、页表整合起来，形成一个地址空间供进程使用。虽然是同义复写但是不得不这么做，因为地址空间的意义就在于它是一个地址空间。
+
+```rust
+pub struct MemorySet {
+    page_table: PageTable,
+    areas: Vec<MapArea>,
+}
+```
 
 内核代码的访存地址也是一个虚拟地址，需要经过MMU，由此构造而得内核地址空间。但是在rCore-Tutorial中，采用不同于以往的内核与应用同属同一地址空间而分上下两部分的设计（这点可以在《RISC-V体系结构编程与实践》中找到，180页），而是采用[全隔离内核](https://rustmagazine.github.io/rust_magazine_2021/chapter_7/trampoline-kernel.html)，因此才有跳板页（似乎 xv6 也是如此设计）。
 
 根据寻址范围和Sv39的规定，地址空间有高 256GiB 和低 256GiB 的区分，具体可见于[最高的256GB与最低的256GB](https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/chapter4/3sv39-implementation-1.html#high-and-low-256gib)中。
 
-内核地址空间中，最高的虚拟页面是一个跳板页，然后是**各应用的内核栈**，各内核栈之间用保护页面 (Guard Page) 隔开。低 256 GiB 是内核的 `.text/.rodata/.data/.bss` 等各逻辑段，恒等映射至物理内存。应用地址空间的高位也是跳板页，与内核地址空间不同的是多了一个 Trap 上下文。低 256 GiB 是各逻辑段和一个带保护页面的用户栈。布局可见于[内核与应用的地址空间](https://learningos.cn/rCore-Camp-Guide-2024A/chapter4/5kernel-app-spaces.html#id5)和[内核与应用的地址空间](https://learningos.cn/rCore-Camp-Guide-2024A/chapter4/5kernel-app-spaces.html#id6)。
+内核地址空间中，最高的虚拟页面是一个跳板页，然后是**各应用的内核栈**，各内核栈之间用保护页面 (Guard Page) 隔开。低 256 GiB 是内核的 `.text/.rodata/.data/.bss` 等各逻辑段，恒等映射至物理内存。应用地址空间的高位也是跳板页，与内核地址空间不同的是多了一个 Trap 上下文。低 256 GiB 是各逻辑段和一个带保护页面的用户栈。布局可见于[内核地址空间](https://learningos.cn/rCore-Camp-Guide-2024A/chapter4/5kernel-app-spaces.html#id5)和[应用地址空间](https://learningos.cn/rCore-Camp-Guide-2024A/chapter4/5kernel-app-spaces.html#id6). 
 
-`KERNEL_SPACE` 作为内核地址空间的全局实例。关于将 Trap 上下文保存在次高页面而不是内核栈，是因为在内核栈中保存上下文需要先切换到内核地址空间，即使用 `satp` 切换页表，然后再使用一个通用寄存器保存内核栈栈顶指针，但硬件无法同时保存两个信息。
+内核的低位地址空间是通过 `Memory::new_kernel()` 创建的. 思路就是创建一个裸露的地址空间之后从低向高推入各逻辑段. 应用地址空间通过 `user/src/linker.ld` 以分配，`BASE_ADDRESS` 设置为 `0x0` 这一虚拟地址并向高位增长. 
+
+此处一个比较重要的认识，就是 FFI 实际上就是对地址的操作，并无特殊之处，只不过这个地址从外部符号导入. 应用地址空间的创建通过 `from_elf()`，实现逻辑就是将各段用 `xmas_elf` 取出然后推入应用地址空间的对应位置中.
+
+`KERNEL_SPACE` 作为**内核地址空间的全局实例**。关于将 Trap 上下文保存在次高页面而不是内核栈，是因为在内核栈中保存上下文需要先切换到内核地址空间，即使用 `satp` 切换页表，然后再使用一个通用寄存器保存内核栈栈顶指针，但硬件无法同时保存两个信息。
 
 `map_trampoline` 是结合汇编和链接脚本等综合实现的，比较复杂而且过于细节，作用就是添加一个跳表页。
+
 ### What is modified?
 
 进行了如上改动后，在 `TaskControlBlock` 中加入应用的地址空间 `memory_set` 和应用地址空间次高页的 Trap 上下文的物理页号 `trap_cx_ppn`. 这里直接使用物理页号应当是提高查找效率? `kernel_stack_position(app_id)` 获取当前应用对应的内核栈位置，可以通过在内核地址空间的位置计算而得。`insert_framed_area` 会实际将此内核栈的逻辑段加入内核地址空间中。这一部分后来发生了改写。
 
 `PhysPageNum::get_mut<T>` 实现了一个泛型，用于获取一个物理地址所指向内容的可变引用，这一实现基于可以参考 `PhysAddr::get_mut<T>` 和 `as_mut()` 的例子 `ptr.as_mut().unwrap()`. 使 `get_trap_cx` 做到了根据物理页号取得对应的 `TrapContext`.
 
-`app_init_context` 用于实现应用的上下文初始化，此处基于对 `TrapContext` 的改动加了新内容。Ch4 在内核初始化时将所有应用加载至全局应用管理器 `TASK_MANAGER` 中，这里后来发生了改写。`stvec` 寄存器设置内核态中断处理流程的入口地址，在 `trap_handler` 中添加 `set_kernel_trap_entry`，这是从 S 态到 S 态的 Trap 但是要到第九章才实现. `trap_handler` 还添加了一些对其他寄存器的内容的 log. 返回用户态的 `trap_return` 也做了一些改写适应跳板页和新的内存布局. `translated_byte_buffer` 以向量的形式返回以字节数组切片为类型的数组，在使用 `UserBuffer` 前的本章直接使用 `print!("{}", core::str::from_utf8(buffer).unwrap());` 作为 `sys_write`，可以参考 `str::from_utf8` 的例子理解此处的调用。
+```rust
+impl PhysAddr {
+    /// Get the mutable reference of physical address
+    pub fn get_mut<T>(&self) -> &'static mut T {
+        unsafe { (self.0 as *mut T).as_mut().unwrap() }
+    }
+}
+```
 
-## 进程调度
+`app_init_context` 用于实现应用的上下文初始化，此处基于对 `TrapContext` 的改动加了新内容。Ch4 在内核初始化时将所有应用加载至全局应用管理器 `TASK_MANAGER` 中，这里后来发生了改写。`stvec` 寄存器设置内核态中断处理流程的入口地址，在 `trap_handler` 中添加 `set_kernel_trap_entry`，但是从 S 态到 S 态的 Trap 但是要到第九章才实现.
+
+```rust
+pub fn init() {
+    set_kernel_trap_entry();
+}
+/// set trap entry for traps happen in kernel(supervisor) mode
+fn set_kernel_trap_entry() {
+    extern "C" {
+        fn __trap_from_kernel();
+    }
+    unsafe {
+        stvec::write(__trap_from_kernel as usize, TrapMode::Direct);
+    }
+}
+```
+
+`trap_handler` 还添加了一些对其他寄存器的内容的 log. 返回用户态的 `trap_return` 也做了一些改写适应跳板页和新的内存布局. `translated_byte_buffer` 以向量的形式返回以字节数组切片为类型的数组，在使用 `UserBuffer` 前的本章直接使用 `print!("{}", core::str::from_utf8(buffer).unwrap());` 作为 `sys_write`，可以参考 `str::from_utf8` 的例子理解此处的调用。
+
+```rust
+/// Create mutable `Vec<u8>` slice in kernel space from ptr in other address space. NOTICE: the content pointed to by the pointer `ptr` can cross physical pages.
+pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&'static mut [u8]> {
+    let page_table = PageTable::from_token(token);
+    let mut start = ptr as usize;
+    let end = start + len;
+    let mut v = Vec::new();
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        let mut vpn = start_va.floor();
+        let ppn = page_table.translate(vpn).unwrap().ppn();
+        vpn.step();
+        let mut end_va: VirtAddr = vpn.into();
+        end_va = end_va.min(VirtAddr::from(end));
+        if end_va.page_offset() == 0 {
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..]);
+        } else {
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..end_va.page_offset()]);
+        }
+        start = end_va.into();
+    }
+    v
+}
+```
+
+## ch5 进程调度
 
 本章开始，`TaskManager` 中处理器管理相关的内容被抽离出来，由 `Processor` 控制。
+
 ### TaskControlBlock
 
 设计 `PidHandle` 来管理对 `pid` 的分配，与先前的 `FrameAllocator` 非常相似，结构上仅仅是删除了 `end` 因为不像栈一样存在限制。类似的，例化全局实例 `PID_ALLOCATOR`. 而一个内核栈 `KernelStack` 对应一个 `pid`. 此处 rCore 的代码与文档之间存在差异。`PID_ALLOCATOR` 和 `KSTACK_ALLOCATOR` 都是对 `RecycleAllocator` 的全局例化，`KernelStack::new` 被公有函数 `kstack_alloc` 所取代，原理不变仍是将 `KSTACK_ALLOCATOR` 分配得到的内核栈插入全局的内核地址空间 `KERNEL_SPACE` 中，使用 `insert_franed_area` 实现。
