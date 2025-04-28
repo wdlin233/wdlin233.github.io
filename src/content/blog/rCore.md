@@ -1,7 +1,7 @@
 ---
 author: wdlin
 pubDatetime: 2025-03-23T21:13:00
-modDatetime: 2025-03-23T21:13:06
+modDatetime: 2025-04-28T16:30:00
 title: rCore (RISC-V) 学习笔记
 slug: rCore-note
 featured: false
@@ -13,8 +13,6 @@ tags:
 description:
   在学习 rCore 操作系统内核时的各种总结和反思. 
 ---
-
-> 一些内容还有待整理，这并不是一个完善的学习笔记.
 
 这是我在参与开源操作系统训练营过程中，记录和总结反思 rCore 的学习笔记，实验指导手册在[这里](https://learningos.cn/rCore-Camp-Guide-2025S/)，但又一定程度上参考了往年的[文档](https://rcore-os.cn/rCore-Tutorial-Book-v3/index.html).
 
