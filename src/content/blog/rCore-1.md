@@ -35,8 +35,6 @@ $ qemu-riscv64 target/riscv64gc-unknown-none-elf/debug/os
   段错误 (核心已转储)
 ```
 
-<!--more-->
-
 出错了，这是因为目前的执行环境还缺了一个退出机制。实现如下. 在[第二章](#syscall)会详细讲解.
 
 ```rust

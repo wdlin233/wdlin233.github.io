@@ -708,6 +708,27 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
 
 设计 `PidHandle` 来管理对 `pid` 的分配，与先前的 `FrameAllocator` 非常相似，结构上仅仅是删除了 `end` 因为不像栈一样存在限制。类似的，例化全局实例 `PID_ALLOCATOR`. 而一个内核栈 `KernelStack` 对应一个 `pid`. 此处 rCore 的代码与文档之间存在差异。`PID_ALLOCATOR` 和 `KSTACK_ALLOCATOR` 都是对 `RecycleAllocator` 的全局例化，`KernelStack::new` 被公有函数 `kstack_alloc` 所取代，原理不变仍是将 `KSTACK_ALLOCATOR` 分配得到的内核栈插入全局的内核地址空间 `KERNEL_SPACE` 中，使用 `insert_franed_area` 实现。
 
+```rust
+pub struct RecycleAllocator {
+    current: usize,
+    recycled: Vec<usize>,
+}
+```
+
+```rust
+/// allocate a new kernel stack
+pub fn kstack_alloc() -> KernelStack {
+    let kstack_id = KSTACK_ALLOCATOR.exclusive_access().alloc();
+    let (kstack_bottom, kstack_top) = kernel_stack_position(kstack_id);
+    KERNEL_SPACE.exclusive_access().insert_framed_area(
+        kstack_bottom.into(),
+        kstack_top.into(),
+        MapPermission::R | MapPermission::W,
+    );
+    KernelStack(kstack_id)
+}
+```
+
 `TaskControlBlock` 更改为如下构成：
 
 ```rust
@@ -723,39 +744,132 @@ pub struct TaskControlBlock {
 ```
 
 `PidHandle` 和 `KernelStack` 是初始化后不再变化的字段，可能发生变化的则放入 `TaskControlBlockInner` 中，如 Trap 上下文的物理页号 `trap_cx_ppn`, 上下文 `task_cx` 和应用地址空间 `memory_set` 等，注意上下文和 Trap 上下文存在区别，分别用于进程调度和特权级切换，保存的内容也分别是内核态执行状态和用户态执行状态。
+
 ### TaskManager & Processor
 
 `TaskManager` 是一个关于 `Arc<TaskControlBlock>` 类型的 `VecDeque` 队列，具体方法比较简单，`TASK_MANAGER` 是其全局实例。`Processor` 由 `current:Option<Arc<TaskControlBlock>>` 和 `idle_task_cx:TaskContext` 组成，分别表示当前处理器上正在执行的任务和当前处理器上 idle 控制流的任务上下文。`PROCESSOR` 是其全局实例。
 
+```rust
+///A array of `TaskControlBlock` that is thread-safe
+pub struct TaskManager {
+    ready_queue: VecDeque<Arc<TaskControlBlock>>,
+}
+```
+
+```rust
+/// Processor management structure
+pub struct Processor {
+    ///The task currently executing on the current processor
+    current: Option<Arc<TaskControlBlock>>,
+    ///The basic control flow of each core, helping to select and switch process
+    idle_task_cx: TaskContext,
+}
+
+lazy_static! {
+    pub static ref PROCESSOR: UPSafeCell<Processor> = unsafe { UPSafeCell::new(Processor::new()) };
+}
+```
+
 `run_tasks` 在任务管理器 `TASK_MANAGER` 取出 ( `fetch_task` ) 相应任务后，进行上下文切换。由于用 `loop` 包裹，将会循环取出任务并进行任务切换，不过 `__switch` 后会切出这个函数。对于 `__switch` 函数，内核先把 `current_task_cx_ptr` 中的寄存器值保存在当前指针的经过偏移的地址下，再将 `next_task_cx_ptr` 的寄存器恢复，具体可见[任务切换](https://learningos.cn/rCore-Camp-Guide-2024A/chapter3/2task-switching.html?highlight=__switch)，由此实现各寄存器值的切换。而 `schedule` 由 `suspend_current_and_run_next` 调用，当应用交出 CPU 使用权后，实施将当前进程挂起为`TaskStatus::Ready`后的上下文切换操作，将当前上下文保存并切换为`idle_task_cx`的上下文。切换回去之后，内核将跳转到 `run_tasks` 中 `__switch` 返回之后的位置，也即开启了下一轮的调度循环。根据[评论](https://github.com/rcore-os/rCore-Tutorial-Book-v3/issues/47#issuecomment-1109562363)的理解，使用空上下文实现了解耦。这一段就是调度的具体实现，并非调度算法。
+
+```rust
+///The main part of process execution and scheduling
+///Loop `fetch_task` to get the process that needs to run, and switch the process through `__switch`
+pub fn run_tasks() {
+    loop {
+        let mut processor = PROCESSOR.exclusive_access();
+        if let Some(task) = fetch_task() {
+            ...
+            unsafe {
+                __switch(idle_task_cx_ptr, next_task_cx_ptr);
+            }
+        } else {
+            warn!("no tasks available in run_tasks");
+        }
+    }
+}
+```
 
 `add_initproc` 在 `main` 中被调用，作用是将全局的 `INITPROC` 加入 `TASK_MANAGER` 中.
 
+```rust
+///Add init process to the manager
+pub fn add_initproc() {
+    add_task(INITPROC.clone());
+}
+```
+
 ### Syscall
 
-`fork`就是创建另一个`TaskControlBlock`, 而这个子进程和父进程拥有初始一致但独立的地址空间和文件描述符表，当然`pid`必然不同。设计的难点在于`MemorySet::from_existed_user`, 可以理解为`MemorySet`的`clone`方法，这复制一个完全相同的地址空间，通过对`MapArea`下`vpn_range`对应`ppn`数据的修改，将原地址空间的数据复制到另一个地址空间中. `sys_fork`在创建子进程时唯一的区别是，子进程的返回值为 0. 因此需要取`trap_cx`并将`a0`寄存器赋 0. 
+`fork` 就是创建另一个 `TaskControlBlock`, 而这个子进程和父进程拥有**初始一致但独立的地址空间和文件描述符表**，当然 `pid` 必然不同。设计的难点在于 `MemorySet::from_existed_user`, 可以理解为 `MemorySet` 的 `clone` 方法，这复制一个完全相同的地址空间，通过对 `MapArea` 下 `vpn_range` 对应 `ppn` 数据的修改，将原地址空间的数据复制到另一个地址空间中. `sys_fork` 在创建子进程时唯一的区别是，子进程的返回值为 0. 因此需要取 `trap_cx` 并将 `a0` 寄存器赋 0. 
 
-`exec`加载一个新的 ELF 文件并替换原有应用地址空间的内容. `sys_exec`先通过`translated_str`将该地址所对应的内容以`char`类型翻译后传回`String`，然后返回 ELF 格式的数据并执行`exec`替换当前进程的应用地址空间. 由于执行`sys_exec`时原有的地址空间会被销毁，各物理页帧都会被回收，为了应对失效的上下文`cx`, 在`trap_handler`中需要重建`cx`.
+```rust
+impl MemorySet {
+    pub fn from_existed_user(user_space: &Self) -> Self {
+        let mut memory_set = Self::new_bare();
+        // map trampoline
+        memory_set.map_trampoline();
+        // copy data sections/trap_context/user_stack
+        for area in user_space.areas.iter() {
+            let new_area = MapArea::from_another(area);
+            memory_set.push(new_area, None);
+            // copy data from another space
+            for vpn in area.vpn_range {
+                let src_ppn = user_space.translate(vpn).unwrap().ppn();
+                let dst_ppn = memory_set.translate(vpn).unwrap().ppn();
+                dst_ppn
+                    .get_bytes_array()
+                    .copy_from_slice(src_ppn.get_bytes_array());
+            }
+        }
+        memory_set
+    }
+}
+```
 
-`sys_waitpid`寻找当前进程子进程中符合`pid`且为僵尸进程的进程，将其回收，附带有对`exit_code`的处理和对旧`pid`的返回.
+`exec` 加载一个新的 ELF 文件并替换原有应用地址空间的内容. `sys_exec` 先通过 `translated_str` 将该地址所对应的内容以 `char` 类型翻译后传回 `String`，然后返回 ELF 格式的数据并执行 `exec` 替换当前进程的应用地址空间. 由于执行 `sys_exec` 时原有的地址空间会被销毁，各物理页帧都会被回收，为了应对失效的上下文 `cx`, 在 `ProcessControlBlock::exec` 中需要对 `trap_handler` 重建 `cx`.
 
-## 文件系统
+`sys_waitpid` 寻找当前进程子进程中符合 `pid` 且为僵尸进程的进程，将其回收，附带有对 `exit_code` 的处理和对旧 `pid` 的返回.
+
+## ch6 文件系统
 
 ### File Trait & UserBuffer
 
-所有的文件访问都可以通过一个抽象接口`File`这一 Trait 进行，具体实现上是`Send + Sync`. 这为文件访问提供了并发的能力，参见[基于 Send 和 Sync 的线程安全](https://course.rs/advance/concurrency-with-threads/send-sync.html#send-%E5%92%8C-sync).
+所有的文件访问都可以通过一个抽象接口 `File` 这一 Trait 进行，具体实现上是 `Send + Sync`. 这为文件访问提供了并发的能力，参见[基于 Send 和 Sync 的线程安全](https://course.rs/advance/concurrency-with-threads/send-sync.html#send-%E5%92%8C-sync).
 
-定义于`mm`模块中的`UserBuffer`是应用地址空间的一段缓冲区，文档中说这可以被理解为`&[u8]`切片，这似乎具有一定的二义性，就从类型`pub buffers: Vec<&'static mut [u8]>`理解即可. 这实际上是一组 utf8 编码构成的数组，在`Stdout`的`write`方法中直接使用了`from_utf8(*buffer)`. 参见[from_utf8](https://doc.rust-lang.org/std/str/fn.from_utf8.html). 
+```rust
+/// trait File for all file types
+pub trait File: Send + Sync {
+    /// the file readable?
+    fn readable(&self) -> bool;
+    /// the file writable?
+    fn writable(&self) -> bool;
+    /// read from the file to buf, return the number of bytes read
+    fn read(&self, buf: UserBuffer) -> usize;
+    /// write to the file from buf, return the number of bytes written
+    fn write(&self, buf: UserBuffer) -> usize;
+}
+```
 
-`UserBuffer`与`translated_byte_buffer` 方法是对应的，返回向量形式的字节(`u8`)数组切片，内核空间可以访问. 理清`UserBuffer`后，在此基础上构建了`Stdin::read`和`Stdout::write`.
+定义于 `mm` 模块中的 `UserBuffer` 是应用地址空间的一段缓冲区，文档中说这可以被理解为 `&[u8]` 切片，这似乎具有一定的二义性，就从类型 `pub buffers: Vec<&'static mut [u8]>` 理解即可. 这实际上是一组 utf8 编码构成的数组，在 `Stdout` 的 `write` 方法中直接使用了 `from_utf8(*buffer)`. 参见[from_utf8](https://doc.rust-lang.org/std/str/fn.from_utf8.html). 
+
+```rust
+/// An abstraction over a buffer passed from user space to kernel space
+pub struct UserBuffer {
+    /// A list of buffers
+    pub buffers: Vec<&'static mut [u8]>,
+}
+```
+
+`UserBuffer` 与 `translated_byte_buffer` 方法是对应的，返回向量形式的字节 (`u8`) 数组切片，内核空间可以访问. 理清 `UserBuffer` 后，在此基础上构建了 `Stdin::read` 和 `Stdout::write`.
 
 ### fd_table
 
-每个进程都带有一个文件描述符表`fd_table`，记录请求打开并可以读写的文件集合。此表对应有文件描述符 (File Descriptor, `fd`) 以一个非负整数记录对应文件位置。`open`或`create`会返回对应描述符，而`close`需要提供描述符以关闭文件。
+每个进程都带有一个文件描述符表 `fd_table`，记录请求打开并可以读写的文件集合。此表对应有文件描述符 (File Descriptor, `fd`) 以一个非负整数记录对应文件位置。`open` 或 `create` 会返回对应描述符，而 `close` 需要提供描述符以关闭文件。
 
-在`TaskControlBlockInner`中就有`pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>`. 包含了共享引用和诸多特性，文档里有详细的解释. 其中`dyn`就是一种运行时多态. 在 fork 时，子进程完全继承父进程的文件描述符表，由此共享文件. 新建进程时，默认先打开标准输入文件`Stdin`和标准输出文件`Stdout`.
+在 `TaskControlBlockInner` 中就有 `pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>`. 包含了共享引用和诸多特性，文档里有详细的解释. 其中 `dyn` 就是一种运行时多态. 在 fork 时，子进程完全继承父进程的文件描述符表，由此共享文件. 新建进程时，默认先打开标准输入文件 `Stdin` 和标准输出文件 `Stdout`.
 
-`sys_write`和`sys_read`根据对应的文件描述符`fd`从当前进程的`fd_table`中取出文件并执行对应的读写操作.
+`sys_write` 和 `sys_read` 根据对应的文件描述符 `fd` 从当前进程的 `fd_table` 中取出文件并执行对应的读写操作.
 
 ### easy-fs
 
@@ -783,7 +897,16 @@ pub struct BlockCache {
 
 在此之上建立一个全局的块管理器`BlockCacheManager`用以管理内存中的`BlockCache`. 方法`get_block_cache`用于在队列中搜索对应块编号的磁盘块，若队列已满则使用类 FIFO 的算法将当前块载入队列中. 
 
+```rust
+/// BlockCacheManager is a manager for BlockCache.
+pub struct BlockCacheManager {
+    /// (block_id, block_cache)
+    queue: VecDeque<(usize, Arc<Mutex<BlockCache>>)>,
+}
+```
+
 由于我们希望内存中只能驻留有限的磁盘块缓冲区，我们定义`BLOCK_CACHE_SIZE = 16`. 从`BlockCacheManager`中获取块缓存时会检查队列的长度是否达到了`BLOCK_CACHE_SIZE`，如果达到就会发生缓存替换. 此处注意区别`BLOCK_CACHE_SIZE`是块缓存队列的长度上限，而`BLOCK_SZ`则是单个`BlockCache`中`cache`的大小.  
+
 #### Layout & Bitmap
 
 然后是其上磁盘数据结构层。这其中按块编号又分为五个区域：超级块、索引节点位图、索引节点区域`DiskInode`、数据块位图和数据块区域`DataBlock`.
@@ -904,7 +1027,7 @@ pub struct Inode {
 
 然后就是各系统调用 syscall 了，全局例化一个 `ROOT_INODE` 并修改相关的 syscall.
 
-## 进程间通信
+## ch7 进程间通信
 
 ### Pipe
 
@@ -931,7 +1054,7 @@ pub struct PipeRingBuffer {
 
 管道自身是带有一定大小缓冲区的字节队列，抽象为 `PipeRingBuffer` 类型. `PipeRingBuffer` 中的 `arr/head/tail` 将一个循环队列. `write_end` 保存了写端的弱引用计数，在某些情况下，需要确认管道所有的写端是否都已经被关闭. `Pipe` 就是加了读写属性的 `PipeRingBuffer`.
 
-`make_pipe` 方法创建一个管道并返回它的读端和写端，
+以下讲解 `sys_pipe()` 方法，首先使用 `make_pipe` 方法创建一个管道并返回它的读端和写端，
 
 ```rust
 /// Return (read_end, write_end)
@@ -944,7 +1067,7 @@ pub fn make_pipe() -> (Arc<Pipe>, Arc<Pipe>) {
 }
 ```
 
-`TaskControlBlockInner::alloc_fd` 分配一个空闲文件描述符来访问新打开的文件。尝试找到一个空闲，没有就拓展文件描述符表的长度并再分配. 然后调用 `translated_refmut` 获取物理地址，将读端和写端的文件描述符写回到应用地址空间.
+然后用 `TaskControlBlockInner::alloc_fd` 分配一个空闲文件描述符来访问新打开的文件。尝试找到一个空闲，没有就拓展文件描述符表的长度并再分配. 然后调用 `translated_refmut` 获取物理地址，将读端和写端的文件描述符写回到应用地址空间.
 
 `PipeRingBuffer::read_byte` 和 `PipeRingBuffer::write_byte` 分别是基于循环队列对缓冲区进行更改，比较简单. 然后对 `Pipe` impl `File` Trait, 实现读写操作. 以 `read` 为例 `loop_read` 来表示可从管道中读取多少字符。若管道为空且所有写端已关闭，则没有任何字符可以读取，直接返回；否则等待填充，先调用 `suspend_current_and_run_next` 切换到其他任务. 可读的字符数不为 0 就循环读取直至缓冲区满或读完. `write` 方法的实现原理是类似的.
 
@@ -992,7 +1115,7 @@ user_sp -= user_sp % core::mem::size_of::<usize>();
 
 具体实现来说，在文件描述符表中分配一个新的文件描述符，并保存为 `fd` 指向的已打开文件的拷贝.
 
-## 并发
+## ch8 并发
 
 ### Threads
 
@@ -1010,13 +1133,33 @@ pub struct TaskControlBlock {
     /// mutable
     inner: UPSafeCell<TaskControlBlockInner>,
 }
+
+/// Inner of Process Control Block
+pub struct ProcessControlBlockInner {
+    ...
+    /// tasks(also known as threads)
+    pub tasks: Vec<Option<Arc<TaskControlBlock>>>,
+    ...
+}
 ```
 
 线程共享进程的地址空间. 线程控制块包含线程初始化后不再变化的元数据，即所属进程和内核栈. 可能发生变化的元数据放在 `TaslControlBlockInner` 中，其中保存着线程各自运行所需的状态，即**上下文**；又有 `TaskUserRes` 包含线程标识符 `tid` 和线程的用户栈顶地址 `ustack_base`. 可以看出，线程拥有独立的内核栈与用户栈. `PID_ALLOCATOR` 和 `KSTACK_ALLOCATOR` 都基于 `RecycleAllocator` 是相比先前 `PidAllocator` 更泛用的版本.
 
+```rust
+/// User Resource for a task
+pub struct TaskUserRes {
+    /// task id
+    pub tid: usize,
+    /// user stack base
+    pub ustack_base: usize,
+    /// process belongs to
+    pub process: Weak<ProcessControlBlock>,
+}
+```
+
 每个进程拥有自己的进程标识符 (TID) ，可以使用 `sys_thread_create` 来创建一个线程. 这意味着在进程内部创建一个线程，该线程可以访问到进程所拥有的代码段， 堆和其他数据段。但内核会给这个新线程分配其专有的用户态栈. 由此实现每个线程的独立调度和执行. 同样的，每个线程也拥有一个独立的跳板页 `TRAMPOLINE`. 相比于 `fork` ，创建线程不需要建立新的地址空间. 线程之间也没有父子关系. 实现上比较简单，就是在新建 `TaskControlBlock` 后添加到 `tasks[new_task_tid]` 下.
 
-线程用户态用到的资源会在 `exit` 系统调用后自动回收，而诸如内核栈等内核态线程资源则需要 `sys_waittid` 来回收以彻底销毁线程. 进程 / 主线程通过 `waittid` 来等待创建出的线程结束，并回收内核中的资源. `exit_current_and_run_next` 是比较繁琐的 进程 资源回收，由主线程发起. `sys_waittid` 是主线程进行调用，等待其他线程结束的方法，发现等待自身则返回，否则收集退出码 `exit_code` 清空此线程的线程控制块，因为 `Arc` 在引用计数为 0 时会自动释放.
+线程用户态用到的资源会在 `exit` 系统调用后自动回收，而诸如内核栈等内核态线程资源则需要 `sys_waittid` 来回收以彻底销毁线程. 进程 / 主线程通过 `waittid` 来等待创建出的线程结束，并回收内核中的资源. `exit_current_and_run_next` 是比较繁琐的 **进程** 资源回收，由**主线程**发起. `sys_waittid` 是主线程进行调用，等待其他线程结束的方法，发现等待自身则返回，否则收集退出码 `exit_code` 清空此线程的线程控制块，因为 `Arc` 在引用计数为 0 时会自动释放.
 
 ### Mutex
 
@@ -1085,28 +1228,35 @@ pub struct CondvarInner {
 考虑在 rCore 中实现，对于 `BankerAlgorithm`
 
 ```rust
-/// Implementation of banker's algorithm
 #[derive(Debug, Default)]
-pub struct BankersAlgorithm {
-    /// Available map, (Resource) = avaibable number
-    available: BTreeMap<ResourceIdentifier, NumberOfResource>,
-    /// (Task, Resource) = ResourceState {allo, need}
-    task_state: BTreeMap<TaskIdentifier, BTreeMap<ResourceIdentifier, TaskResourcesState>>,
+/// Banker algorithm data structure for single process
+pub struct BankerAlgorithm {
+    /// Available map, (Resource) = available number
+    available: BTreeMap<ResourceIdentifier, NumberOfResources>,
+    /// (Task, Resource) = Resource {allocation, need}
+    task_state: BTreeMap<TaskIdentifier, BTreeMap<ResourceIdentifier, TaskResourceState>>,
 }
 
 #[derive(Debug, Default)]
-struct TaskResourcesState {
-    // max: NumberOfResource,
-    allocation: NumberOfResource,
-    need: NumberOfResource,
+pub struct TaskResourceState {
+    // max: NumberOfResources,
+    allocation: NumberOfResources,
+    need: NumberOfResources,
 }
 ```
 
 对于 `TaskResourceState` 我们只需要 `allocation` 和 `need` ，这方便我们的分配操作，而 `max` 一般只是检查资源的合理性.
 
-全局实例 `DEADLOCK_DETECT_ENABLED` 是对 `pid` 到 `BankerAlogorithm` 的 KV 键值对，用于开启对应 `pid` 的死锁避免算法.
+全局实例 `BANKER_ALGO` 是对 `pid` 到 `BankerAlogorithm` 的 KV 键值对，用于开启对应 `pid` 的死锁避免算法.
 
-考虑我们先前提到的步骤，对 `available` 的方法就是 `add_resource` ，以添加对应资源的数量. 对 `task_state` 的方法较多一些，`request` 是对 `record` 的封装，同时执行 `security_check`. `record` 就是试探性地将 `need` 数量增加；`alloc` / `acquire` 直接分配：
+```rust
+lazy_static! {
+    /// The banker algorithm instance
+    pub static ref BANKER_ALGO: UPSafeCell<BTreeMap<TaskIdentifier, BankerAlgorithm>> = unsafe {UPSafeCell::new(BTreeMap::new())};
+}
+```
+
+考虑我们先前提到的步骤，对 `BankerAlgorithm.available` 的方法就是 `init_available_resource` ，以添加对应资源的数量. 对 `BankerAlgorithm.task_state` 的方法较多一些，`request` 是对 `init_task_resource` 的封装，同时执行 `security_check`. `init_task_resource` 就是试探性地将 `need` 数量增加；`alloc` 直接分配：
 
 ```rust
 // Available[j] = Available[j] - Request[i,j];
@@ -1117,6 +1267,8 @@ task.allocation += request;
 task.need -= request;
 ```
 
-`dealloc` / `release` 就是反过来执行. `security_check` 开启一个全为 `false` 的数组表示初始时所有线程都没有结束，执行上述所说 1 ~ 4 步进行安全性检查. 我认为这里是检查分配后是否会出现死锁，检查所有线程以保证系统安全.
+`dealloc` 就是反过来执行. `security_check` 开启一个全为 `false` 的数组表示初始时所有线程都没有结束，执行上述所说 1 ~ 4 步进行安全性检查. 我认为这里是检查分配后是否会出现死锁，检查所有线程以保证系统安全.
 
-在具体实现上，`add_resource` 添加在 `sys_mutex_create` 和 `sys_semaphore_create` 上. `request` 在 `sys_mutex_lock` 和 `sys_semaphore_down` 中用于检测安全性. `acquire` 意为获取资源仅在 `sys_semaphore_down` 中，因为 `sys_mutex_lock` 直接调用 `mutex.lock()`? 此处可能存在问题. `release` 在 `sys_mutex_unlock` 和 `sys_semaphore_up` 中都存在因为这意味着对已占用资源的释放. 
+在具体实现上，`init_available_resource` 添加在 `sys_mutex_create` 和 `sys_semaphore_create` 上. 在 `sys_mutex_lock` 和 `sys_semaphore_down` 中，每次先 `request` 以检测是否是一个合理的资源分配，然后才 `alloc`. `dealloc` 在 `sys_mutex_unlock` 和 `sys_semaphore_up` 中都存在因为这意味着对已占用资源的释放. 
+
+`sys_semaphore_down` 中的 `sem.down()` 必须在 `alloc(tid, sem_id, 1)` 之前，可能是因为 `sem.down()` 会将进程挂起。若 `alloc()` 在此之前，可能导致资源并未被实际获取，由此其他进程因为错误的状态而无法获取资源. 这个顺序保持着资源分配记录与实际获取资源状态相一致.
