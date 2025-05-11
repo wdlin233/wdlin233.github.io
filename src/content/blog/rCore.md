@@ -330,9 +330,9 @@ pub fn exit(exit_code: i32) -> isize { sys_exit(exit_code) }
 | stval       | 给出 Trap 附加信息                                           |
 | stvec       | 控制 Trap 处理代码的入口地址                                 |
 
-涉及特权级切换的应用程序的调用情况[如图所示](#privilege level). 应用程序的上下文可以分为通用寄存器和栈两部分。通用寄存器部分先前提及过；而对于栈，需要两个执行流，并且其记录的**执行历史**的栈所对应的内存区域不相交，就不会产生覆盖问题，无需进行保存/恢复。
+涉及特权级切换的应用程序的调用情况[如图所示](#privilegeLevel). 应用程序的上下文可以分为通用寄存器和栈两部分。通用寄存器部分先前提及过；而对于栈，需要两个执行流，并且其记录的**执行历史**的栈所对应的内存区域不相交，就不会产生覆盖问题，无需进行保存/恢复。
 
-<a id="privilege level"></a>
+<a id="privilegeLevel"></a>
 
 <img src="https://rcore-os.gitcode.host/rCore-Tutorial-Book-v3/_images/EnvironmentCallFlow.png" alt="三态特权级切换" style="zoom:67%;" />
 
