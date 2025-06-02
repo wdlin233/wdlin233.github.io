@@ -8,9 +8,12 @@ featured: false
 draft: false
 tags:
   - PL
+  - compiler
 description:
   《程序设计语言》一书阅读中的一些记录.
 ---
+
+## Table of contents
 
 ## Introduction
 
@@ -55,7 +58,7 @@ natural_number -> non_zero_digit digit*
 
 例如表达式 `3 + 4 * 5` 在词法分析时先要根据产生式 `expr -> term | expr add_op term` 做 `expr -> expr add_op term`，由此得到的是 `term + term`，与先运算乘法的优先级是相反的. 做过 NJU PA 的友友应该都考虑过这一点.
 
-## Scanning
+### Scanning
 
 > to be continue...
 
