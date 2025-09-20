@@ -1,7 +1,7 @@
 ---
 author: wdlin
 pubDatetime: 2025-06-01T11:54:00
-modDatetime: 2025-06-01T15:29:00
+modDatetime: 2025-06-02T11:56:00
 title: PLP 阅读随笔
 slug: PLP
 featured: false

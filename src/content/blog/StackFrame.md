@@ -2,7 +2,7 @@
 author: wdlin
 pubDatetime: 2025-03-01T20:54:00
 modDatetime: 2025-03-01T20:54:00
-title: 关于函数栈帧 StackFrame
+title: 对函数栈帧 StackFrame 的理解
 slug: StackFrame
 featured: false
 draft: false
@@ -10,7 +10,7 @@ tags:
   - rCore
   - OS
 description:
-  标题备矣.
+  我在学习操作系统中对函数栈帧的一些学习记录.
 ---
 
 ## Table of contents
