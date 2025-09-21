@@ -569,7 +569,7 @@ $\Pi_{\text{S\#, SNAME}}(\sigma_{\text{AGE > 21 ∧ SEX = 'M'}}(\text{S}))$
 4.  Join with Students to get their names:
     $\Pi_{\text{S\#, SNAME}}(\text{S} \bowtie R_3)$
 
-### Exercises2
+### Exercise2
 
 For Database Schema:
 
@@ -675,7 +675,7 @@ For Database Schema:
 
 Here are the relational algebra expressions for the two problem sets, translated into English.
 
-### Exercises4
+### Exercise4
 
 Database Schema:
 
@@ -753,7 +753,7 @@ Database Schema:
     2.  Join with `Students` to get their names and project:
         $\text{Result} \leftarrow \Pi_{\text{sname}}(\text{S} \bowtie R_{\text{final\_snums}})$
 
-### Exercises5
+### Exercise5
 
 Database Schema:
 
@@ -850,7 +850,7 @@ $\text{Result} \leftarrow \sigma_{\text{QTY >= 300 ∧ QTY <= 500}}(\text{SPJ})$
 4.  Join with `Projects` to get `JNAME`:
     $\text{Result} \leftarrow \Pi_{\text{JNAME}}(\text{J} \bowtie R_3)$
 
-### Exercises6
+### Exercise6
 
 Database Schema:
 
