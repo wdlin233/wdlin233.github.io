@@ -849,3 +849,85 @@ $\text{Result} \leftarrow \sigma_{\text{QTY >= 300 ∧ QTY <= 500}}(\text{SPJ})$
     $R_3 \leftarrow R_2 \div R_1$
 4.  Join with `Projects` to get `JNAME`:
     $\text{Result} \leftarrow \Pi_{\text{JNAME}}(\text{J} \bowtie R_3)$
+
+### Exercises6
+
+Database Schema:
+
+*   **Student:** Student(Sno, Sname, Ssex, Sage, Sdept)
+*   **Course:** Course(Cno, Cname, Cpno) (Cpno is the Cno of the prerequisite course)
+*   **SC (Student-Course):** SC(Sno, Cno, Grade)
+
+**(1) Find the names (Sname) and ages (Sage) of all students in the 'CS' department.**
+
+$\text{Result} \leftarrow \Pi_{\text{Sname, Sage}}(\sigma_{\text{Sdept = 'CS'}}(\text{Student}))$
+
+**(2) Find the student IDs (Sno) of all students who have a grade less than 60.**
+
+$\text{Result} \leftarrow \Pi_{\text{Sno}}(\sigma_{\text{Grade < 60}}(\text{SC}))$
+
+**(3) Find the names (Sname) and departments (Sdept) of students who took course 'C002'.**
+
+1.  Find `Sno` of students who took 'C002':
+    $R_1 \leftarrow \Pi_{\text{Sno}}(\sigma_{\text{Cno = 'C002'}}(\text{SC}))$
+2.  Join with `Student` to get their names and departments:
+    $\text{Result} \leftarrow \Pi_{\text{Sname, Sdept}}(\text{Student} \bowtie R_1)$
+
+**(4) Find the student IDs (Sno) of those who took both course 'C001' and 'C002'.**
+
+1.  Find `Sno` of students who took 'C001':
+    $R_1 \leftarrow \Pi_{\text{Sno}}(\sigma_{\text{Cno = 'C001'}}(\text{SC}))$
+2.  Find `Sno` of students who took 'C002':
+    $R_2 \leftarrow \Pi_{\text{Sno}}(\sigma_{\text{Cno = 'C002'}}(\text{SC}))$
+3.  Intersect the two sets of `Sno`:
+    $\text{Result} \leftarrow R_1 \cap R_2$
+
+**(5) Find the names (Sname) of students who took 'C001' but not 'C002'.**
+
+1.  Find `Sno` of students who took 'C001':
+    $R_1 \leftarrow \Pi_{\text{Sno}}(\sigma_{\text{Cno = 'C001'}}(\text{SC}))$
+2.  Find `Sno` of students who took 'C002':
+    $R_2 \leftarrow \Pi_{\text{Sno}}(\sigma_{\text{Cno = 'C002'}}(\text{SC}))$
+3.  Find `Sno` of students who took 'C001' but *not* 'C002':
+    $R_3 \leftarrow R_1 - R_2$
+4.  Join with `Student` to get their names:
+    $\text{Result} \leftarrow \Pi_{\text{Sname}}(\text{Student} \bowtie R_3)$
+
+**(6) Find students (Sno) who took *all* the courses taken by student 'S001'.**
+
+1.  Find all `Cno` taken by student 'S001':
+    $R_1 \leftarrow \Pi_{\text{Cno}}(\sigma_{\text{Sno = 'S001'}}(\text{SC}))$
+2.  Use the `SC` table (projected to `Sno, Cno`) and `R_1` in a division operation:
+    $\text{Result} \leftarrow \Pi_{\text{Sno, Cno}}(\text{SC}) \div R_1$
+
+**(7) Find the name (Cname) of the prerequisite course for 'Data Structures'.**
+
+1.  Find the `Cno` of 'Data Structures':
+    $R_1 \leftarrow \sigma_{\text{Cname = 'Data Structures'}}(\text{Course})$
+2.  Join `R_1` with `Course` (aliased to find the prerequisite):
+    
+    $R_2 \leftarrow \rho_{\text{CourseDS(\text{CnoDS}, \text{CnameDS}, \text{CpnoDS})}}(R_1)$
+
+    $R_3 \leftarrow \sigma_{\text{Course.Cno = R2.CpnoDS}}(\text{Course} \times R_2)$
+3.  Project the `Cname` of the prerequisite course:
+    $\text{Result} \leftarrow \Pi_{\text{Cname}}(R_3)$
+
+**(8) For each course, find the number of students enrolled and the average grade.**
+
+$\text{Result} \leftarrow \mathcal{G}_{\text{Cno}; \text{COUNT(Sno) AS NumStudents, AVG(Grade) AS AverageGrade}}(\text{SC})$
+
+**(9) Find the student IDs (Sno) and average grades (AverageGrade) of students whose average grade is greater than 85.**
+
+1.  Calculate the average grade for each student:
+    $R_1 \leftarrow \mathcal{G}_{\text{Sno}; \text{AVG(Grade) AS AverageGrade}}(\text{SC})$
+2.  Select students whose `AverageGrade` is greater than 85:
+    $\text{Result} \leftarrow \sigma_{\text{AverageGrade > 85}}(R_1)$
+
+**(10) Find the names (Sname) of students enrolled in more than 3 courses.**
+
+1.  Count the number of courses each student is enrolled in:
+    $R_1 \leftarrow \mathcal{G}_{\text{Sno}; \text{COUNT(Cno) AS NumCourses}}(\text{SC})$
+2.  Select students enrolled in more than 3 courses:
+    $R_2 \leftarrow \Pi_{\text{Sno}}(\sigma_{\text{NumCourses > 3}}(R_1))$
+3.  Join with `Student` to get their names:
+    $\text{Result} \leftarrow \Pi_{\text{Sname}}(\text{Student} \bowtie R_2)$
