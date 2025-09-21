@@ -383,6 +383,62 @@ This operation is particularly useful for "for all" type queries, such as "Find 
 
 The division operation is powerful for specific types of "universal quantification" queries. While not as frequently used directly in SQL as other operations, its logic is crucial for understanding how certain complex SQL queries (often involving nested subqueries with `NOT EXISTS` or `COUNT` and `GROUP BY`) are constructed.
 
+### 11. Group/Aggregation ($\mathcal{G}$)
+
+The Group/Aggregation operation (often represented as $\mathcal{G}$ or gamma) is an extension to basic relational algebra that allows for grouping tuples based on common attribute values and then applying aggregate functions (like COUNT, SUM, AVG, MAX, MIN) to each group. It is crucial for summarizing data.
+
+*   **Notation**: $G_{A_1, A_2, ..., A_k; F_1(B_1), F_2(B_2), ... F_m(B_m)}(R)$
+    *   $A_1, A_2, ..., A_k$: These are the grouping attributes. The relation $R$ will be partitioned into groups based on unique combinations of values in these attributes. If no grouping attributes are specified, the entire relation is treated as a single group.
+    *   $F_i(B_i)$: These are the aggregate functions applied to attributes $B_i$ within each group. Common aggregate functions include:
+        *   COUNT: Counts the number of tuples.
+        *   SUM: Calculates the sum of values.
+        *   AVG: Calculates the average of values.
+        *   MAX: Finds the maximum value.
+        *   MIN: Finds the minimum value.
+
+*   **Example 1: Counting Enrollments per Student**
+    Using our `Enrollment` relation:
+
+    | StudentID | CourseID | Grade |
+    | :-------- | :------- | :---- |
+    | 101 | CS101 | A |
+    | 101 | MA101 | B+ |
+    | 102 | CS101 | B |
+    | 103 | PH101 | C |
+    | 104 | MA101 | A- |
+    | 101 | PH101 | B- |
+
+    **Goal**: Count how many courses each student is enrolled in.
+
+    $\mathcal{G}_{\text{StudentID}; \text{COUNT(CourseID) AS NumCourses}}(\text{Enrollment})$
+
+    **Result:**
+
+    | StudentID | NumCourses |
+    | :-------- | :--------- |
+    | 101 | 3 |
+    | 102 | 1 |
+    | 103 | 1 |
+    | 104 | 1 |
+
+*   **Example 2: Average Grade per Student**
+    **Goal**: Calculate the average grade for each student.
+
+    $\mathcal{G}_{\text{StudentID}; \text{AVG(Grade) AS AverageGrade}}(\text{Enrollment})$
+
+    **Result (assuming A=4, B+=3.5, B=3, C=2, A-=3.7, B-=2.5 for calculation):**
+
+    | StudentID | AverageGrade |
+    | :-------- | :----------- |
+    | 101 | (4 + 3.5 + 2.5) / 3 = 3.33 |
+    | 102 | 3 / 1 = 3 |
+    | 103 | 2 / 1 = 2 |
+    | 104 | 3.7 / 1 = 3.7 |
+
+    *(Note: The actual `Grade` column contains letter grades, so `AVG(Grade)` as a numerical average might not be directly applicable without a mapping function from letter grades to numbers. For demonstration, we assume such a mapping exists or that `Grade` could be numerical.)*
+
+The Aggregation operator is a powerful tool for generating summary reports and answering analytical questions about the data, forming the basis for `GROUP BY` and aggregate functions in SQL.
+
 ## Exercises
 
 ### Exercise1
@@ -512,3 +568,284 @@ $\Pi_{\text{S\#, SNAME}}(\sigma_{\text{AGE > 21 ∧ SEX = 'M'}}(\text{S}))$
     $R_3 \leftarrow R_2 - R_1$
 4.  Join with Students to get their names:
     $\Pi_{\text{S\#, SNAME}}(\text{S} \bowtie R_3)$
+
+### Exercises2
+
+For Database Schema:
+
+*   **Students (S):** (S#, SNAME, SEX, MAJOR, SCHOLARSHIP)
+*   **Courses (C):** (C#, CNAME, CREDIT)
+*   **Learning (L):** (S#, C#, SCORE)
+
+**(1) Retrieve information for students majoring in "English", including Student ID (S#), Name (SNAME), Course Name (CNAME), and Score (SCORE).**
+
+1.  Select students majoring in 'English':
+    $R_1 \leftarrow \sigma_{\text{MAJOR = 'English'}}(\text{Students})$
+2.  Join with Learning to get their course scores:
+    $R_2 \leftarrow R_1 \bowtie \text{Learning}$
+3.  Join with Courses to get course names:
+    $R_3 \leftarrow R_2 \bowtie \text{Courses}$
+4.  Project the required attributes:
+    $\Pi_{\text{S\#, SNAME, CNAME, SCORE}}(R_3)$
+
+**(2) Retrieve Student ID (S#), Name (SNAME), Major (MAJOR), and Score (SCORE) for all students whose 'Database Principles' course score is greater than 90.**
+
+1.  Select the 'Database Principles' course:
+    $R_1 \leftarrow \sigma_{\text{CNAME = 'Database Principles'}}(\text{Courses})$
+2.  Join with Learning to find students who took this course and their scores:
+    $R_2 \leftarrow R_1 \bowtie \text{Learning}$
+3.  Filter for scores greater than 90:
+    $R_3 \leftarrow \sigma_{\text{SCORE > 90}}(R_2)$
+4.  Join with Students to get student details:
+    $R_4 \leftarrow R_3 \bowtie \text{Students}$
+5.  Project the required attributes:
+    $\pi_{\text{S\#, SNAME, MAJOR, SCORE}}(R_4)$
+
+**(3) Retrieve Student ID (S#), Name (SNAME), and Major (MAJOR) for students who did *not* take course 'C135'.**
+
+1.  Find Student IDs (S#) of students who *did* take course 'C135':
+    $R_1 \leftarrow \Pi_{\text{S\#}}(\sigma_{\text{C\# = 'C135'}}(\text{Learning}))$
+2.  Find all distinct Student IDs (S#) from the Students table:
+    $R_2 \leftarrow \Pi_{\text{S\#}}(\text{Students})$
+3.  Subtract students who took 'C135' from all students to find those who didn't:
+    $R_3 \leftarrow R_2 - R_1$
+4.  Join with Students to get their names and majors:
+    $\Pi_{\text{S\#, SNAME, MAJOR}}(\text{Students} \bowtie R_3)$
+
+**4. Retrieve the information (Student ID (S#), Name (SNAME), and Major (MAJOR)) of all students who *did not fail any course* (assuming a failing grade is SCORE < 60).**
+
+1.  Find the S# of students who *have failed* at least one course (SCORE < 60):
+    $R_1 \leftarrow \Pi_{\text{S\#}}(\sigma_{\text{SCORE < 60}}(\text{Learning}))$
+2.  Find all distinct S# from the `Students` table:
+    $R_2 \leftarrow \Pi_{\text{S\#}}(\text{Students})$
+3.  Subtract students who failed from all students:
+    $R_3 \leftarrow R_2 - R_1$
+4.  Join with the `Students` table to get their name and major, then project:
+    $\Pi_{\text{S\#, SNAME, MAJOR}}(\text{Students} \bowtie R_3)$
+
+### Exercise3
+
+For Database Schema:
+
+*   **Students (S):** (S#, SNAME, SEX, MAJOR, SCHOLARSHIP)
+*   **Courses (C):** (C#, CNAME, CREDIT)
+*   **Learning (L):** (S#, C#, SCORE)
+
+**(1) Retrieve information for students majoring in "International Trade" *and* receiving a scholarship, including Student ID (S#), Name (SNAME), Course Name (CNAME), and Score (SCORE).**
+
+1.  Select students majoring in 'International Trade' and receiving a scholarship:
+    $R_1 \leftarrow \sigma_{\text{MAJOR = 'International Trade' ∧ SCHOLARSHIP > 0}}(\text{Students})$
+2.  Join with Learning to get their course scores:
+    $R_2 \leftarrow R_1 \bowtie \text{Learning}$
+3.  Join with Courses to get course names:
+    $R_3 \leftarrow R_2 \bowtie \text{Courses}$
+4.  Project the required attributes:
+    $\Pi_{\text{S\#, SNAME, CNAME, SCORE}}(R_3)$
+
+**(2) Retrieve Course ID (C#), Name (CNAME), and Credit (CREDIT) for courses where a student achieved a perfect score (100).**
+
+1.  Select entries from Learning where SCORE is 100:
+    $R_1 \leftarrow \sigma_{\text{SCORE = 100}}(\text{Learning})$
+2.  Join with Courses to get course details:
+    $R_2 \leftarrow R_1 \bowtie \text{Courses}$
+3.  Project the required attributes (duplicates will be removed by projection):
+    $\Pi_{\text{C\#, CNAME, CREDIT}}(R_2)$
+
+**(3) Retrieve Student ID (S#), Name (SNAME), and Major (MAJOR) for students who did *not* receive a scholarship *and* have at least one course score above 95.**
+
+1.  Find Student IDs (S#) of students who did *not* receive a scholarship:
+    $R_1 \leftarrow \Pi_{\text{S\#}}(\sigma_{\text{SCHOLARSHIP = 0}}(\text{Students}))$
+2.  Find Student IDs (S#) of students with at least one score > 95:
+    $R_2 \leftarrow \Pi_{\text{S\#}}(\sigma_{\text{SCORE > 95}}(\text{Learning}))$
+3.  Find students who satisfy both conditions (intersection):
+    $R_3 \leftarrow R_1 \cap R_2$
+4.  Join with Students to get their names and majors:
+    $\Pi_{\text{S\#, SNAME, MAJOR}}(\text{Students} \bowtie R_3)$
+
+**(4) Retrieve Student ID (S#), Name (SNAME), and Major (MAJOR) for all students who have *no course score below 80*.**
+
+1.  Find Student IDs (S#) of students who *do* have at least one course score below 80:
+    $R_1 \leftarrow \Pi_{\text{S\#}}(\sigma_{\text{SCORE < 80}}(\text{Learning}))$
+2.  Find all distinct Student IDs (S#) from the Students table:
+    $R_2 \leftarrow \Pi_{\text{S\#}}(\text{Students})$
+3.  Subtract students who have scores below 80 from all students:
+    $R_3 \leftarrow R_2 - R_1$
+4.  Join with Students to get their names and majors:
+    $\Pi_{\text{S\#, SNAME, MAJOR}}(\text{Students} \bowtie R_3)$
+
+Here are the relational algebra expressions for the two problem sets, translated into English.
+
+### Exercises4
+
+Database Schema:
+
+*   **S (Students):** (snum, sname, age, sex)
+*   **SC (Student-Course):** (snum, cnum, score)
+*   **C (Courses):** (cnum, cname, teacher)
+
+
+**(1) Retrieve the Course Numbers (cnum) of courses *not* taken by student "Xiang Liu".**
+
+1.  Find the `snum` of "Xiang Liu":
+    $R_1 \leftarrow \Pi_{\text{snum}}(\sigma_{\text{sname = 'Xiang Liu'}}(\text{S}))$
+2.  Find the `cnum` of courses taken by "Xiang Liu":
+    $R_2 \leftarrow \Pi_{\text{cnum}}(\text{SC} \bowtie R_1)$
+3.  Find all distinct `cnum` from the `Courses` table:
+    $R_3 \leftarrow \Pi_{\text{cnum}}(\text{C})$
+4.  Subtract courses taken by "Xiang Liu" from all available courses:
+    $\text{Result} \leftarrow R_3 - R_2$
+
+**(2) Retrieve the names (sname) of male students who have at least one course score above 90.**
+
+1.  Find the `snum` of male students:
+    $R_1 \leftarrow \Pi_{\text{snum}}(\sigma_{\text{sex = 'M'}}(\text{S}))$
+2.  Find the `snum` of students who have at least one course score above 90:
+    $R_2 \leftarrow \Pi_{\text{snum}}(\sigma_{\text{score > 90}}(\text{SC}))$
+3.  Intersect these two sets of `snum` to find male students with scores > 90:
+    $R_3 \leftarrow R_1 \cap R_2$
+4.  Join with `Students` to get their names and project:
+    $\text{Result} \leftarrow \Pi_{\text{sname}}(\text{S} \bowtie R_3)$
+
+**(3) List the names (sname) of students who *did not select* the course "Artificial Intelligence".**
+
+1.  Find the `cnum` for "Artificial Intelligence":
+    $R_1 \leftarrow \Pi_{\text{cnum}}(\sigma_{\text{cname = 'Artificial Intelligence'}}(\text{C}))$
+2.  Find the `snum` of students who *did* select "Artificial Intelligence":
+    $R_2 \leftarrow \Pi_{\text{snum}}(\text{SC} \bowtie R_1)$
+3.  Find all distinct `snum` from the `Students` table:
+    $R_3 \leftarrow \Pi_{\text{snum}}(\text{S})$
+4.  Subtract students who took "Artificial Intelligence" from all students:
+    $R_4 \leftarrow R_3 - R_2$
+5.  Join with `Students` to get their names and project:
+    $\text{Result} \leftarrow \Pi_{\text{sname}}(\text{S} \bowtie R_4)$
+
+**(4) Find the names (sname) of students who have taken *all* courses taught by "Teacher Yuan".**
+
+1.  Find all `cnum` taught by "Teacher Yuan":
+    $R_1 \leftarrow \Pi_{\text{cnum}}(\sigma_{\text{teacher = 'Teacher Yuan'}}(\text{C}))$
+2.  Find all (`snum`, `cnum`) pairs from `SC`:
+    $R_2 \leftarrow \Pi_{\text{snum, cnum}}(\text{SC})$
+3.  Perform division to find `snum` of students who took all courses from `R_1`:
+    $R_3 \leftarrow R_2 \div R_1$
+4.  Join with `Students` to get their names and project:
+    $\text{Result} \leftarrow \Pi_{\text{sname}}(\text{S} \bowtie R_3)$
+
+**(5) Find the names (sname) of students for whom *every* course score is above 70 AND their *average* score for all courses is above 75.**
+
+*   **Part 1: Students whose every course score is above 70 (using standard relational algebra):**
+    1.  Find `snum` of students who have *any* score $\le$ 70:
+        $R_{bad\_scores} \leftarrow \Pi_{\text{snum}}(\sigma_{\text{score} \le 70}(\text{SC}))$
+    2.  Find all `snum` of students:
+        $R_{all\_students} \leftarrow \Pi_{\text{snum}}(\text{S})$
+    3.  Students with *all* scores > 70:
+        $R_{\text{all\_gt\_70}} \leftarrow R_{all\_students} - R_{bad\_scores}$
+
+*   **Part 2: Students whose average score is above 75 (requires extended relational algebra with aggregation):**
+    *   Standard relational algebra does not include aggregation operators (like SUM, AVG, COUNT, GROUP BY) as primitive operations. However, most database courses introduce them as extensions. Assuming these extensions are allowed:
+    1.  Group `SC` by `snum` and calculate the average score:
+        $R_{\text{avg\_scores}} \leftarrow G_{\text{snum}; \text{AVG(score) AS AvgScore}}(\text{SC})$
+    2.  Filter for students with `AvgScore` > 75:
+        $R_{\text{avg\_gt\_75}} \leftarrow \Pi_{\text{snum}}(\sigma_{\text{AvgScore > 75}}(R_{\text{avg\_scores}}))$
+
+*   **Combine and Final Result:**
+    1.  Intersect the results from Part 1 and Part 2:
+        $R_{\text{final\_snums}} \leftarrow R_{\text{all\_gt\_70}} \cap R_{\text{avg\_gt\_75}}$
+    2.  Join with `Students` to get their names and project:
+        $\text{Result} \leftarrow \Pi_{\text{sname}}(\text{S} \bowtie R_{\text{final\_snums}})$
+
+### Exercises5
+
+Database Schema:
+
+*   **S (Suppliers):** (SNO, SNAME, STATUS, CITY)
+*   **P (Parts):** (PNO, PNAME, WEIGHT, COLOR)
+*   **J (Projects):** (JNO, JNAME, CITY)
+*   **SPJ (Supply):** (SNO, PNO, JNO, QTY)
+
+**(1) Provide the Supplier Numbers (SNO) of suppliers who supply Project J1.**
+
+$\text{Result} \leftarrow \Pi_{\text{SNO}}(\sigma_{\text{JNO = 'J1'}}(\text{SPJ}))$
+
+**(2) Provide all supply details (tuples from SPJ) where the quantity (QTY) is between 300 and 500 (inclusive).**
+
+$\text{Result} \leftarrow \sigma_{\text{QTY >= 300 ∧ QTY <= 500}}(\text{SPJ})$
+
+**(3) Provide the Part Numbers (PNO) of parts supplied by suppliers in 'London' to projects in 'London'.**
+
+1.  Find `SNO` of suppliers in 'London':
+    $R_1 \leftarrow \Pi_{\text{SNO}}(\sigma_{\text{CITY = 'London'}}(\text{S}))$
+2.  Find `JNO` of projects in 'London':
+    $R_2 \leftarrow \Pi_{\text{JNO}}(\sigma_{\text{CITY = 'London'}}(\text{J}))$
+3.  Join `SPJ` with `R_1` and `R_2` and project `PNO`:
+    $\text{Result} \leftarrow \Pi_{\text{PNO}}((\text{SPJ} \bowtie R_1) \bowtie R_2)$
+
+**(4) Provide all Part Numbers (PNO) that satisfy the following condition: the supplier providing the part and the project using the part are in the same city.**
+
+1.  Join `Suppliers`, `Supply`, and `Projects` tables:
+    $R_1 \leftarrow \text{S} \bowtie \text{SPJ} \bowtie \text{J}$
+2.  Select tuples where `S.CITY` equals `J.CITY`:
+    $R_2 \leftarrow \sigma_{\text{S.CITY = J.CITY}}(R_1)$
+3.  Project the `PNO`:
+    $\text{Result} \leftarrow \Pi_{\text{PNO}}(R_2)$
+
+**(5) Provide the Project Names (JNAME) of all projects supplied by supplier S1.**
+
+1.  Select supply records for `S1`:
+    $R_1 \leftarrow \sigma_{\text{SNO = 'S1'}}(\text{SPJ})$
+2.  Join with `Projects` to get project details:
+    $R_2 \leftarrow R_1 \bowtie \text{J}$
+3.  Project `JNAME`:
+    $\text{Result} \leftarrow \Pi_{\text{JNAME}}(R_2)$
+
+**(6) Provide the Project Names (JNAME) of projects that use parts supplied by suppliers who supply 'red' parts.** (Assuming "red parts" means parts with `COLOR = 'Red'`, and "suppliers who supply red parts" means suppliers who supply *at least one* red part).
+
+1.  Find `PNO` of red parts:
+    $R_1 \leftarrow \Pi_{\text{PNO}}(\sigma_{\text{COLOR = 'Red'}}(\text{P}))$
+2.  Find `SNO` of suppliers who supply these red parts:
+    $R_2 \leftarrow \Pi_{\text{SNO}}(\text{SPJ} \bowtie R_1)$
+3.  Find `JNO` of projects involved with these suppliers:
+    $R_3 \leftarrow \Pi_{\text{JNO}}(R_2 \bowtie \text{SPJ})$
+4.  Join with `Projects` to get `JNAME`:
+    $\text{Result} \leftarrow \Pi_{\text{JNAME}}(\text{J} \bowtie R_3)$
+
+**(7) Find the Project Names (JNAME) of projects that use *all* parts.**
+
+1.  Find all distinct `PNO` from the `Parts` table:
+    $R_1 \leftarrow \Pi_{\text{PNO}}(\text{P})$
+2.  Find all (`JNO`, `PNO`) pairs from `SPJ`:
+    $R_2 \leftarrow \Pi_{\text{JNO, PNO}}(\text{SPJ})$
+3.  Perform division to find `JNO` of projects using all parts:
+    $R_3 \leftarrow R_2 \div R_1$
+4.  Join with `Projects` to get `JNAME`:
+    $\text{Result} \leftarrow \Psi_{\text{JNAME}}(\text{J} \bowtie R_3)$
+
+**(8) Find the Supplier Names (SNAME) of suppliers who supply *both* parts P1 and P2.**
+
+1.  Find `SNO` that supply `P1`:
+    $R_1 \leftarrow \Pi_{\text{SNO}}(\sigma_{\text{PNO = 'P1'}}(\text{SPJ}))$
+2.  Find `SNO` that supply `P2`:
+    $R_2 \leftarrow \Pi_{\text{SNO}}(\sigma_{\text{PNO = 'P2'}}(\text{SPJ}))$
+3.  Intersect these sets of `SNO`:
+    $R_3 \leftarrow R_1 \cap R_2$
+4.  Join with `Suppliers` to get `SNAME` and project:
+    $\text{Result} \leftarrow \Pi_{\text{SNAME}}(\text{S} \bowtie R_3)$
+
+**(9) Display the Part Names (PNAME) of parts that have the same color as the part named "TV".** (Assuming "TV" is a `PNAME` value).
+
+1.  Find the `COLOR` of the part named "TV":
+    $R_1 \leftarrow \Pi_{\text{COLOR}}(\sigma_{\text{PNAME = 'TV'}}(\text{P}))$
+2.  Find `PNAME` of parts with that `COLOR`:
+    $R_2 \leftarrow \text{P} \bowtie R_1$
+3.  Project `PNAME` (excluding the part 'TV' itself if required, but the query doesn't specify exclusion):
+    $\text{Result} \leftarrow \Pi_{\text{PNAME}}(R_2)$
+
+**(10) Find the Project Names (JNAME) of projects that use *all* parts supplied by S1.**
+
+1.  Find all distinct `PNO` supplied by `S1`:
+    $R_1 \leftarrow \Pi_{\text{PNO}}(\sigma_{\text{SNO = 'S1'}}(\text{SPJ}))$
+2.  Find all (`JNO`, `PNO`) pairs from `SPJ`:
+    $R_2 \leftarrow \Pi_{\text{JNO, PNO}}(\text{SPJ})$
+3.  Perform division to find `JNO` of projects using all parts from `R_1`:
+    $R_3 \leftarrow R_2 \div R_1$
+4.  Join with `Projects` to get `JNAME`:
+    $\text{Result} \leftarrow \Pi_{\text{JNAME}}(\text{J} \bowtie R_3)$
