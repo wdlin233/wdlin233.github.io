@@ -9,8 +9,7 @@ draft: false
 tags:
   - MLSys
   - CUDA
-description:
-  Lecture 8: CUDA Performance Checklist
+description: "Lecture 8: CUDA Performance Checklist"
 ---
 
 对于 CUDA Kernel，主要有以下几个指标：

@@ -9,8 +9,7 @@ draft: false
 tags:
   - rCore
   - OS
-description:
-  记录了我在阅读 rCoreloongArch 文档过程中的总结.
+description: "记录了我在阅读 rCoreloongArch 文档过程中的总结."
 ---
 
 ## Table of contents

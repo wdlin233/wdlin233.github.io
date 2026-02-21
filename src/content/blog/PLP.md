@@ -9,8 +9,7 @@ draft: false
 tags:
   - PL
   - compiler
-description:
-  《程序设计语言》一书阅读中的一些记录.
+description: "《程序设计语言》一书阅读中的一些记录."
 ---
 
 ## Table of contents

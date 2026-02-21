@@ -9,8 +9,7 @@ draft: false
 tags:
   - rCore
   - OS
-description:
-  我在学习操作系统中对函数栈帧的一些学习记录.
+description: "我在学习操作系统中对函数栈帧的一些学习记录."
 ---
 
 ## Table of contents

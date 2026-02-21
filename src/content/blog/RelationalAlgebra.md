@@ -9,8 +9,7 @@ draft: false
 tags:
   - DB
   - RelationalAlgebra
-description:
-  The Relational Algebra learning notes for the database course.
+description: "The Relational Algebra learning notes for the database course."
 ---
 
 ## Table of contents
@@ -206,14 +205,14 @@ While the natural join (or inner join) only returns tuples that have matches in 
 | **106** | **AR101** | **A** | (New enrollment, no matching student in `Students`)
 | 101 | PH101 | B- |
 
-#### 7a. Left Outer Join ($\text{⟕}$)
+#### 7a. Left Outer Join (⟕)
 
 The Left Outer Join returns all tuples from the *left* relation and the matching tuples from the *right* relation. If a tuple in the left relation has *no matching tuple* in the right relation, the attributes from the right relation will be filled with `NULL` values.
 
-*   **Notation**: $R \text{⟕} S$
+*   **Notation**: `R ⟕ S`
 *   **Example**: Show all students and, if they are enrolled in any courses, show their enrollment details. Students without enrollment should still appear.
 
-    $\text{Students} \text{⟕} \text{Enrollment}$
+    `Students ⟕ Enrollment`
 
     **Result:**
 
@@ -227,14 +226,14 @@ The Left Outer Join returns all tuples from the *left* relation and the matching
     | 101 | Alice | Computer Sci | PH101 | B- |
     | **105** | **Eve** | **Art** | **NULL** | **NULL** |
 
-#### 7b. Right Outer Join ($\text{⟖}$)
+#### 7b. Right Outer Join (⟖)
 
 The Right Outer Join returns all tuples from the *right* relation and the matching tuples from the *left* relation. If a tuple in the right relation has *no matching tuple* in the left relation, the attributes from the left relation will be filled with `NULL` values.
 
-*   **Notation**: $R \text{⟖} S$
+*   **Notation**: `R ⟖ S`
 *   **Example**: Show all enrollments and, if they correspond to an existing student, show the student's name and major. Enrollments by non-existent students should still appear.
 
-    $\text{Students} \text{⟖} \text{Enrollment}$
+    `Students ⟖ Enrollment`
 
     **Result:**
 
@@ -248,14 +247,14 @@ The Right Outer Join returns all tuples from the *right* relation and the matchi
     | 101 | Alice | Computer Sci | PH101 | B- |
     | **106** | **NULL** | **NULL** | **AR101** | **A** | <- Enrollment for 106 appears, as it's in `Enrollment`
 
-#### 7c. Full Outer Join ($\text{⟗}$)
+#### 7c. Full Outer Join (⟗)
 
 The Full Outer Join returns all tuples from *both* the left and right relations. If a tuple in the left relation has no match in the right, or vice versa, the non-matching attributes will be filled with `NULL` values. It's essentially the union of a Left Outer Join and a Right Outer Join.
 
-*   **Notation**: $R \text{⟗} S$
+*   **Notation**: `R ⟗ S`
 *   **Example**: Show all students and all enrollments. If a student has no enrollment, show their details with `NULL` for enrollment. If an enrollment has no matching student, show its details with `NULL` for student information.
 
-    $\text{Students} \text{⟗} \text{Enrollment}$
+    `Students ⟗ Enrollment`
 
     **Result:**
 
@@ -472,7 +471,7 @@ $\Pi_{\text{C\#, CNAME}}(\sigma_{\text{TEACHER = 'Jun Cheng'}}(\text{C}))$
 
 **(2) Retrieve the Student ID (S#) and Name (SNAME) of male students older than 21.**
 
-$\Pi_{\text{S\#, SNAME}}(\sigma_{\text{AGE > 21 ∧ SEX = 'M'}}(\text{S}))$
+$\Pi_{\text{S\#, SNAME}}(\sigma_{\text{AGE > 21 } \land \text{ SEX = 'M'}}(\text{S}))$
 
 **(3) Retrieve the names (SNAME) of students who have taken *all* courses taught by Jun Cheng.**
 
@@ -502,7 +501,7 @@ $\Pi_{\text{S\#, SNAME}}(\sigma_{\text{AGE > 21 ∧ SEX = 'M'}}(\text{S}))$
     $SC_1 \leftarrow \rho_{\text{SC}_{1}}(\text{SC})$, 
     $SC_2 \leftarrow \rho_{\text{SC}_{2}(\text{S\#}_2, \text{C\#}_2, \text{GRADE}_2)}(\text{SC})$
 2.  Join `SC_1` and `SC_2` on matching `C#` but different `S#`:
-    $\Pi_{\text{C\#}}(\sigma_{\text{SC}_1.\text{C\#} = \text{SC}_2.\text{C\#} \text{ ∧ } \text{SC}_1.\text{S\#} \neq \text{SC}_2.\text{S\#}}(\text{SC}_1 \times \text{SC}_2))$
+    $\Pi_{\text{C\#}}(\sigma_{\text{SC}_1.\text{C\#} = \text{SC}_2.\text{C\#} \land \text{SC}_1.\text{S\#} \neq \text{SC}_2.\text{S\#}}(\text{SC}_1 \times \text{SC}_2))$
 
 **(6) Retrieve the Course IDs (C#) and Course Names (CNAME) of courses that *all* students have taken.**
 
@@ -634,7 +633,7 @@ For Database Schema:
 **(1) Retrieve information for students majoring in "International Trade" *and* receiving a scholarship, including Student ID (S#), Name (SNAME), Course Name (CNAME), and Score (SCORE).**
 
 1.  Select students majoring in 'International Trade' and receiving a scholarship:
-    $R_1 \leftarrow \sigma_{\text{MAJOR = 'International Trade' ∧ SCHOLARSHIP > 0}}(\text{Students})$
+    $R_1 \leftarrow \sigma_{\text{MAJOR = 'International Trade' } \land \text{ SCHOLARSHIP > 0}}(\text{Students})$
 2.  Join with Learning to get their course scores:
     $R_2 \leftarrow R_1 \bowtie \text{Learning}$
 3.  Join with Courses to get course names:
@@ -768,7 +767,7 @@ $\text{Result} \leftarrow \Pi_{\text{SNO}}(\sigma_{\text{JNO = 'J1'}}(\text{SPJ}
 
 **(2) Provide all supply details (tuples from SPJ) where the quantity (QTY) is between 300 and 500 (inclusive).**
 
-$\text{Result} \leftarrow \sigma_{\text{QTY >= 300 ∧ QTY <= 500}}(\text{SPJ})$
+$\text{Result} \leftarrow \sigma_{\text{QTY >= 300 } \land \text{ QTY <= 500}}(\text{SPJ})$
 
 **(3) Provide the Part Numbers (PNO) of parts supplied by suppliers in 'London' to projects in 'London'.**
 

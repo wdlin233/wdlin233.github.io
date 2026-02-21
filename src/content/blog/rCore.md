@@ -10,8 +10,7 @@ tags:
   - Rust
   - rCore
   - OS
-description:
-  在学习 rCore 操作系统内核时的各种总结和反思. 
+description: "在学习 rCore 操作系统内核时的各种总结和反思."
 ---
 
 这是我在参与开源操作系统训练营过程中，记录和总结反思 rCore 的学习笔记，实验指导手册在[这里](https://learningos.cn/rCore-Camp-Guide-2025S/)，但又一定程度上参考了往年的[文档](https://rcore-os.cn/rCore-Tutorial-Book-v3/index.html).
