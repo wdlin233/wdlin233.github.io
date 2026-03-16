@@ -8,3 +8,6 @@ title: "Links"
 - [Kevin56348](https://kevin56348.github.io/blog/)
 - [YOO_koishi](https://blog.yookoishi.com/)
 - [sixday-C](https://www.sixdayc.top/)
+- [RevLogi](https://revlogi.github.io/)
+    - _"I don't want to remain correct."_
+- [CAICAIIs](https://caicaiis.cc/)
