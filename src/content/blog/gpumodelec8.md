@@ -37,7 +37,7 @@ description: "Lecture 8: CUDA Performance Checklist"
 
 对于 CUDA Kernel 来说，change kernel launch parameters 是类似的方法.
 
-CUDA occupancy calculator解决了这个问题，使用 `cudaOccupancyMaxPotential BlockSize` 这个 kernel 来找出最佳的 kernel launch parameters. 返回 Recommended block size 和 Minimum grid size.
+CUDA occupancy calculator解决了这个问题，使用 `cudaOccupancyMaxPotentialBlockSize` 这个 kernel 来找出最佳的 kernel launch parameters. 返回 Recommended block size 和 Minimum grid size.
 
 ***
 
