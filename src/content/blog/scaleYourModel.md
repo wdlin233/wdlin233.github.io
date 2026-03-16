@@ -8,7 +8,7 @@ featured: false
 draft: false
 tags:
   - MLSys
-  - AI-infra
+  - AIInfra
 description: "Some notes for How to Scale Your Model book"
 ---
 
