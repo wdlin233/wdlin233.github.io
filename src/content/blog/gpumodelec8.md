@@ -12,6 +12,8 @@ tags:
 description: "Lecture 8: CUDA Performance Checklist"
 ---
 
+本文是对 [GPUMODE @ Lec8](https://www.youtube.com/watch?v=SGhfUhlowB4) 的学习记录.
+
 对于 CUDA Kernel，主要有以下几个指标：
 - DRAM Throughput
 - Duration
