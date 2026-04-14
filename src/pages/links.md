@@ -11,3 +11,5 @@ title: "Links"
 - [RevLogi](https://revlogi.github.io/)
     - _"I don't want to remain correct."_
 - [CAICAIIs](https://caicaiis.cc/)
+- [Epi](https://blog.episvr.top)
+    - _"ad astra per aspera"_
