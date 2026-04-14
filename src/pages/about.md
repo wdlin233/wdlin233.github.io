@@ -4,6 +4,6 @@ title: "About"
 ---
 
 I am a junior student major in Computer Science. I am 
-interested in Operating System and Compiler.
+interested in HPC (x AI), Compiler and Operating System.
 
 This blog is based on [astro-paper](https://github.com/satnaing/astro-paper).  
