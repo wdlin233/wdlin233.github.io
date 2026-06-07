@@ -5,7 +5,8 @@ modDatetime: 2026-06-07T13:00:00
 title: Intro to Polyhedral Optimization
 slug: polyhedral
 featured: false
-draft: true
+hideFromHome: true
+draft: false
 tags:
   - PL
   - compiler
