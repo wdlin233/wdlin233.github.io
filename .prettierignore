@@ -1,5 +1,3 @@
 node_modules/
 dist/
 .astro/
-.migration-multiterm/
-.npm-cache/

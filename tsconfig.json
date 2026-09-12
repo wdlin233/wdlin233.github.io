@@ -1,7 +1,7 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "multiterm/**/*"],
-  "exclude": ["dist", "node_modules", "src", ".migration-multiterm"],
+  "exclude": ["dist", "node_modules", "src"],
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {

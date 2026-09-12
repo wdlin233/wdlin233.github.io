@@ -45,6 +45,6 @@ export default [
     },
   },
   {
-    ignores: ["dist/**", ".astro", "src/**", ".migration-multiterm/**"],
+    ignores: ["dist/**", ".astro", "src/**"],
   },
 ];
