@@ -3,6 +3,8 @@ layout: ../layouts/LinksLayout.astro
 title: "Links"
 ---
 
+Arrange according to the order of addition.
+
 - [SaZiKK](https://sazikk.top/)
 - [DM\~X\~X\~X](https://dmx20070206.github.io/)
 - [Kevin56348](https://kevin56348.github.io/blog/)
@@ -15,3 +17,6 @@ title: "Links"
     - ad astra per aspera
 - [让雨亭](https://wamingmo.github.io/)
 - [vespertine97](https://vespertine97.github.io/)
+- [Harryh](https://blog.harryh.cn/)
+- [Soulter](https://blog.soulter.top/)
+- [Fridemn](https://fridemn.best/)
