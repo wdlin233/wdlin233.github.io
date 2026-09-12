@@ -10,8 +10,8 @@ import rehypeKatex from "rehype-katex";
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://wdlin233.github.io',
-  //base: 'my-blog',
+  site: 'https://blog.wdlin.com',
+  base: '/',
   integrations: [
     tailwind({
       applyBaseStyles: false,
