@@ -60,6 +60,15 @@ module.exports = {
         }
       },
       fontFamily: {
+        sans: [
+          "IBM Plex Sans",
+          "Noto Sans CJK SC",
+          "Noto Sans SC",
+          "PingFang SC",
+          "Microsoft YaHei",
+          "system-ui",
+          "sans-serif",
+        ],
         mono: ["IBM Plex Mono", "monospace"],
       },
 
