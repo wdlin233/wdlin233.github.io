@@ -1,0 +1,74 @@
+---
+import IconChevronsRight from '~/icons/chevrons-right.svg'
+import type { CollectionEntry } from 'astro:content'
+import { render } from 'astro:content'
+import Tags from '~/components/Tags.astro'
+import PostInfo from '~/components/PostInfo.astro'
+import type { Collation } from '~/types'
+import { TagsGroup } from '~/utils'
+import { getPostPreviewImage } from '~/post-preview-image'
+
+interface Props {
+  post: CollectionEntry<'posts'>
+}
+
+const { post } = Astro.props
+
+const { remarkPluginFrontmatter } = await render(post)
+const description = remarkPluginFrontmatter.description || post.data.description
+let tags: Collation<'posts'>[] | undefined
+if (post.data.tags && post.data.tags.length > 0) {
+  const tagsGroup = await TagsGroup.build()
+  tags = tagsGroup.matchMany(post.data.tags)
+}
+const samePage = Astro.url.pathname.replace(/\/$/, '') === `/posts/${post.id}`
+const articleLink = samePage ? `#${post.id}` : `/posts/${post.id}/`
+const previewImage = getPostPreviewImage(post)
+---
+
+<article class="w-full py-5 my-1 md:my-4 border-accent/10">
+  <div class:list={['flex flex-col gap-5', previewImage && 'sm:flex-row sm:items-start']}>
+    <div class="min-w-0 flex-1">
+      <h1 class="mb-3 text-2xl text-heading1 font-semibold">
+        <a href={articleLink}>{post.data.title}</a>
+      </h1>
+      <PostInfo post={post} class="mb-3 mt-4" />
+      {
+        description && (
+          <p class="pl-0.5 my-4 text-base/7 text-foreground">{description}</p>
+        )
+      }
+      {
+        tags && (
+          <div class="mb-6">
+            <Tags tags={tags} />
+          </div>
+        )
+      }
+      <a class="button flex items-center !pl-3.5" href={articleLink}>
+        {samePage ? 'Continue' : 'Read'}
+        <IconChevronsRight class="size-5 ml-2" />
+      </a>
+    </div>
+    {
+      previewImage && (
+        <a
+          href={articleLink}
+          class="order-first sm:order-last sm:w-48 shrink-0 rounded-xl border-2 border-foreground/10 bg-foreground/4 overflow-hidden"
+          data-preview-image
+          aria-hidden="true"
+          tabindex="-1"
+        >
+          <img
+            src={previewImage.src}
+            alt={previewImage.alt}
+            class="block h-40 sm:h-36 w-full object-contain"
+            loading="lazy"
+            decoding="async"
+            onerror="this.closest('[data-preview-image]')?.remove()"
+          />
+        </a>
+      )
+    }
+  </div>
+</article>

@@ -1,13 +1,5 @@
-# Ignore everything
-/*
-
-# Except these files & folders
-!/src
-!/public
-!/.github
-!tsconfig.json
-!astro.config.ts
-!package.json
-!.prettierrc
-!eslint.config.mjs
-!README.md
+node_modules/
+dist/
+.astro/
+.migration-multiterm/
+.npm-cache/

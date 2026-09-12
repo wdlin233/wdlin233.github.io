@@ -1,0 +1,15 @@
+---
+import { getEntry, render } from 'astro:content'
+import Layout from '~/layouts/Layout.astro'
+
+const page = await getEntry('pages', 'links')
+if (!page) throw new Error('Links page not found')
+const { Content } = await render(page)
+---
+
+<Layout title={page.data.title} description={page.data.description}>
+  <article class="max-w-full py-7.5" data-pagefind-body>
+    <h1 class="mb-5 text-[1.75rem] text-heading1 font-semibold">{page.data.title}</h1>
+    <div class="prose"><Content /></div>
+  </article>
+</Layout>
