@@ -26,7 +26,7 @@ const articleLink = samePage ? `#${post.id}` : `/posts/${post.id}/`
 const previewImage = getPostPreviewImage(post)
 ---
 
-<article class="w-full py-5 my-1 md:my-4 border-accent/10">
+<article class="w-full py-5 my-1 md:my-4 border-accent/10" lang={post.data.lang}>
   <div class:list={['flex flex-col gap-5', previewImage && 'sm:flex-row sm:items-start']}>
     <div class="min-w-0 flex-1">
       <h1 class="mb-3 text-2xl text-heading1 font-semibold">

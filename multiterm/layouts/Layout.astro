@@ -7,15 +7,17 @@ import SelectThemeLoader from '~/components/SelectThemeLoader.astro'
 import siteConfig from '~/site.config'
 import { pick, resolveThemeColorStyles } from '~/utils'
 import crypto from 'crypto'
+import japaneseFontUrl from '@expo-google-fonts/noto-sans-jp/400Regular/NotoSansJP_400Regular.ttf?url'
 
 interface Props {
   title?: string
   description?: string
   tags?: string[]
   author?: string
+  lang?: string
 }
 
-const { title, description, tags, author } = Astro.props
+const { title, description, tags, author, lang = 'zh-CN' } = Astro.props
 const pageUrl = new URL(Astro.url.pathname, Astro.site).href.replace(/\/$/, '') // Remove trailing slash for consistency
 const pageType = Astro.url.pathname.startsWith('/posts') ? 'article' : 'website'
 const articlePath = Astro.url.pathname
@@ -112,11 +114,28 @@ for (const [themeId, themeStyles] of Object.entries(resolvedThemes)) {
   cssLines.push(`}`)
 }
 let generatedCss: string = cssLines.join('\n')
+const japaneseTypographyCss = `
+@font-face {
+  font-family: 'Noto Sans JP';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('${japaneseFontUrl}') format('truetype');
+}
+:lang(ja) {
+  font-family: var(--theme-font), 'Noto Sans JP', 'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic', YuGothic, Meiryo, sans-serif;
+  font-kerning: normal;
+  line-break: strict;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+`
 ---
 
 <!doctype html>
 <html
-  lang="zh-CN"
+  lang={lang}
   data-theme={defaultTheme}
   data-dark-theme={darkTheme}
   data-light-theme={lightTheme}
@@ -152,6 +171,7 @@ let generatedCss: string = cssLines.join('\n')
     <title>{pageTitle}</title>
     <style is:global define:vars={baseCssVars}></style>
     <style is:inline set:html={generatedCss}></style>
+    <style is:inline set:html={japaneseTypographyCss}></style>
     {themeMode === 'light-dark-auto' && <LightDarkAutoThemeLoader />}
     {themeMode === 'select' && <SelectThemeLoader />}
   </head>

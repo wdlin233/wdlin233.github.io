@@ -22,6 +22,18 @@ npm run build
 
 The original post slugs are preserved, so existing `/posts/<slug>/` URLs remain valid.
 
+## Language
+
+Chinese remains the default language. To publish a Japanese post, add the language to
+its frontmatter:
+
+```yaml
+lang: ja
+```
+
+Japanese posts use Noto Sans JP for Japanese glyphs and generate Japanese-capable
+social cards. Inline Japanese in another post can use an element with `lang="ja"`.
+
 ## License
 
 The MultiTerm theme is licensed under the MIT License. See

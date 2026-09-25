@@ -17,6 +17,10 @@ const cjkFontPath = path.resolve(
   './node_modules/@expo-google-fonts/noto-sans-sc/400Regular/NotoSansSC_400Regular.ttf',
 )
 const cjkFontData = fs.readFileSync(cjkFontPath)
+const japaneseFontPath = path.resolve(
+  './node_modules/@expo-google-fonts/noto-sans-jp/400Regular/NotoSansJP_400Regular.ttf',
+)
+const japaneseFontData = fs.readFileSync(japaneseFontPath)
 
 const avatarPath = path.resolve(siteConfig.socialCardAvatarImage)
 let avatarData: Buffer | undefined
@@ -62,13 +66,28 @@ const ogOptions: SatoriOptions = {
       style: 'normal',
       weight: 400,
     },
+    {
+      data: japaneseFontData,
+      name: 'Noto Sans JP',
+      style: 'normal',
+      weight: 400,
+    },
   ],
   height: 630,
   width: 1200,
 }
 
-const markup = (title: string, pubDate: string | undefined, author: string) =>
-  html(`<div style="font-family: JetBrains Mono, Noto Sans SC;" tw="flex flex-col max-w-full justify-center h-full bg-[${bg}] text-[${fg}] p-12">
+const markup = (
+  title: string,
+  pubDate: string | undefined,
+  author: string,
+  lang: string,
+) => {
+  const cjkFontOrder = lang.toLowerCase().startsWith('ja')
+    ? 'Noto Sans JP, Noto Sans SC'
+    : 'Noto Sans SC, Noto Sans JP'
+
+  return html(`<div lang="${lang}" style="font-family: JetBrains Mono, ${cjkFontOrder};" tw="flex flex-col max-w-full justify-center h-full bg-[${bg}] text-[${fg}] p-12">
     <div style="border-width: 12px; border-radius: 80px;" tw="flex items-center max-w-full p-8 border-[${accent}]/30">
       ${
         avatarBase64
@@ -84,12 +103,13 @@ const markup = (title: string, pubDate: string | undefined, author: string) =>
       </div>
     </div>
   </div>`)
+}
 
 type Props = InferGetStaticPropsType<typeof getStaticPaths>
 
 export async function GET(context: APIContext) {
-  const { pubDate, title, author } = context.props as Props
-  const svg = await satori(markup(title, pubDate, author) as ReactNode, ogOptions)
+  const { pubDate, title, author, lang } = context.props as Props
+  const svg = await satori(markup(title, pubDate, author, lang) as ReactNode, ogOptions)
   const png = new Resvg(svg).render().asPng()
   return new Response(new Uint8Array(png), {
     headers: {
@@ -108,12 +128,18 @@ export async function getStaticPaths() {
         pubDate: post.data.published ? dateString(post.data.published) : undefined,
         title: post.data.title,
         author: post.data.author || siteConfig.author,
+        lang: post.data.lang,
       },
     }))
     .concat([
       {
         params: { slug: '__default' },
-        props: { pubDate: undefined, title: siteConfig.title, author: siteConfig.author },
+        props: {
+          pubDate: undefined,
+          title: siteConfig.title,
+          author: siteConfig.author,
+          lang: 'zh-CN',
+        },
       },
     ])
 }

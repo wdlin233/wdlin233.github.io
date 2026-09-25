@@ -25,6 +25,7 @@ const posts = defineCollection({
         series: z.string().optional(),
         coverImage: z.object({ src: image(), alt: z.string() }).optional(),
         toc: z.boolean().default(true),
+        lang: z.string().default('zh-CN'),
       })
       .transform((data) => ({
         ...data,
@@ -50,6 +51,7 @@ const pages = defineCollection({
     title: z.string(),
     description: z.string().optional(),
     layout: z.string().optional(),
+    lang: z.string().default('zh-CN'),
   }),
 })
 

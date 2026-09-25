@@ -23,6 +23,7 @@
     "@astrojs/sitemap": "3.5.1",
     "@astrojs/ts-plugin": "^1.10.4",
     "@expo-google-fonts/jetbrains-mono": "^0.4.0",
+    "@expo-google-fonts/noto-sans-jp": "^0.4.3",
     "@expo-google-fonts/noto-sans-sc": "^0.4.3",
     "@expressive-code/plugin-line-numbers": "0.41.3",
     "@fontsource-variable/jetbrains-mono": "^5.2.6",
@@ -58,18 +59,18 @@
     "unified": "^11.0.5"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.3",
     "@types/markdown-it": "^14.1.2",
     "@types/sanitize-html": "^2.16.0",
+    "@typescript-eslint/parser": "^8.5.0",
+    "astro-eslint-parser": "^1.0.3",
+    "eslint": "^9.10.0",
+    "eslint-plugin-astro": "^1.2.4",
+    "globals": "^15.9.0",
     "pagefind": "1.4.0",
     "prettier": "3.6.2",
     "prettier-plugin-astro": "0.14.1",
     "sass-embedded": "^1.92.1",
-    "@astrojs/check": "^0.9.3",
-    "eslint": "^9.10.0",
-    "typescript-eslint": "^8.5.0",
-    "@typescript-eslint/parser": "^8.5.0",
-    "astro-eslint-parser": "^1.0.3",
-    "eslint-plugin-astro": "^1.2.4",
-    "globals": "^15.9.0"
+    "typescript-eslint": "^8.5.0"
   }
 }
