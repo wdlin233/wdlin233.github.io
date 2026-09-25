@@ -5,7 +5,7 @@ modDatetime: 2026-06-07T13:00:00
 title: Intro to Polyhedral Optimization
 slug: polyhedral
 featured: false
-hideFromHome: true
+hideFromHome: false
 draft: false
 tags:
   - PL

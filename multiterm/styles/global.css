@@ -74,6 +74,106 @@ body {
   overflow-wrap: anywhere;
 }
 
+ruby {
+  ruby-align: center;
+}
+
+rt {
+  font-size: 0.55em;
+  font-weight: 400;
+}
+
+.kanbun-kunten {
+  display: grid;
+  grid-template-columns: 1.25rem 3.25rem 1.6rem;
+  grid-template-rows: repeat(5, 3.25rem);
+  width: fit-content;
+  margin: 2.5rem auto;
+  padding: 1.75rem 2rem;
+  border-left: 1px solid color-mix(in oklab, var(--theme-accent) 20%, transparent);
+  border-right: 2px solid color-mix(in oklab, var(--theme-accent) 45%, transparent);
+  background: color-mix(in oklab, var(--theme-accent) 4%, transparent);
+  font-family: 'Noto Sans JP', 'Yu Mincho', 'Hiragino Mincho ProN', serif;
+  text-orientation: upright;
+}
+
+.kanbun-row-1 {
+  grid-row: 1;
+}
+
+.kanbun-row-2 {
+  grid-row: 2;
+}
+
+.kanbun-row-3 {
+  grid-row: 3;
+}
+
+.kanbun-row-4 {
+  grid-row: 4;
+}
+
+.kanbun-row-5 {
+  grid-row: 5;
+}
+
+.kanbun-glyph {
+  grid-column: 2;
+  align-self: center;
+  justify-self: center;
+  font-size: 2.65rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.kanbun-reading,
+.kanbun-kaeriten {
+  writing-mode: vertical-rl;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.kanbun-reading {
+  grid-column: 3;
+  justify-self: start;
+}
+
+.kanbun-reading-1 {
+  grid-row: 1;
+  align-self: start;
+}
+
+.kanbun-reading-2 {
+  grid-row: 2;
+  align-self: start;
+}
+
+.kanbun-reading-3 {
+  grid-row: 3;
+  align-self: start;
+}
+
+.kanbun-reading-4 {
+  grid-row: 4 / 6;
+  align-self: start;
+  letter-spacing: 0.12em;
+}
+
+.kanbun-kaeriten {
+  grid-column: 1;
+  justify-self: end;
+  align-self: end;
+}
+
+.kanbun-kaeriten-2 {
+  grid-row: 3;
+}
+
+.kanbun-kaeriten-1 {
+  grid-row: 5;
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,

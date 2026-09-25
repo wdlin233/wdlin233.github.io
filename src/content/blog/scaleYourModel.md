@@ -8,7 +8,7 @@ featured: false
 draft: false
 tags:
   - MLSys
-  - AIInfra
+  - AI-Infra
 description: "Some notes for How to Scale Your Model book"
 ---
 
@@ -24,7 +24,25 @@ description: "Some notes for How to Scale Your Model book"
 
 一个比较有意思的事情是，我们一般讲 memory-bound，但是这里都用 communication-bound 代替了，是有点小巧思的。一个可能的原因是本书侧重于 scaling，而对于单卡下没有什么太大区别的 memory 和 communication 在卡与卡之间用 communication 是一个更好的称谓。LLM 对此的评价是”网络即内存“。
 
-![Roofline 公式](../../assets/images/roofline_formula.png)
+$$
+\begin{aligned}
+T_{\mathrm{math}} > T_{\mathrm{comms}}
+&\iff
+\frac{\text{Computation FLOPs}}{\text{Accelerator FLOPs/s}}
+>
+\frac{\text{Communication Bytes}}{\text{Bandwidth Bytes/s}}
+\\[0.75em]
+&\iff
+\frac{\text{Computation FLOPs}}{\text{Communication Bytes}}
+>
+\frac{\text{Accelerator FLOPs/s}}{\text{Bandwidth Bytes/s}}
+\\[0.75em]
+&\iff
+\operatorname{Intensity}(\text{Computation})
+>
+\operatorname{Intensity}(\text{Accelerator})
+\end{aligned}
+$$
 
 这个公式区分了 FLOPs 和 FLOPs/s, Communication 和 Bandwidth 的区别。上方是理论计算时间与理论通信时间，进行交叉相乘的变形后得到 算法计算强度 > 硬件机器强度 的结论。所以判断一个程序是卡在算力还是显存，和程序的计算强度是否高于这个显卡平衡点的门槛是相关的。
 
