@@ -3,9 +3,9 @@
 
 # wdlin233
 
-Hi! I'm wdlin233. You can pronounce wdlin as /ˈwʊd.lɪn/ in IPA. If you don't mind, the katakana writing is ウドリン.
+Hi! I'm wdlin233. You can pronounce "wdlin" as /ˈwʊd.lɪn/ in IPA. If you prefer katakana, you can write it as ウドリン.
 
-I am a senior student major in Computer Science. I am
-interested in HPC (x AI), Compiler and Operating System.
+I am a senior student majoring in Computer Science. I am
+interested in HPC (x AI), compilers and operating systems.
 
-I‘m trying to acquire Japanese in an immersive way based on the comprehensible input hypothesis.
+I am trying to acquire Japanese through immersion, following the comprehensible input hypothesis.
