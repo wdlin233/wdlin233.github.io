@@ -85,11 +85,11 @@ rt {
 
 .kanbun-kunten {
   display: grid;
-  grid-template-columns: 1.25rem 3.25rem 1.6rem;
-  grid-template-rows: repeat(5, 3.25rem);
+  grid-template-columns: 0.9rem 2.35rem 1.2rem;
+  grid-template-rows: repeat(5, 2.35rem);
   width: fit-content;
   margin: 2.5rem auto;
-  padding: 1.75rem 2rem;
+  padding: 1.1rem 1.35rem;
   border-left: 1px solid color-mix(in oklab, var(--theme-accent) 20%, transparent);
   border-right: 2px solid color-mix(in oklab, var(--theme-accent) 45%, transparent);
   background: color-mix(in oklab, var(--theme-accent) 4%, transparent);
@@ -121,7 +121,7 @@ rt {
   grid-column: 2;
   align-self: center;
   justify-self: center;
-  font-size: 2.65rem;
+  font-size: 1.85rem;
   font-weight: 500;
   line-height: 1;
 }
@@ -129,7 +129,7 @@ rt {
 .kanbun-reading,
 .kanbun-kaeriten {
   writing-mode: vertical-rl;
-  font-size: 0.8rem;
+  font-size: 0.62rem;
   font-weight: 500;
   line-height: 1;
 }
