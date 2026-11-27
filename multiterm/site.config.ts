@@ -53,7 +53,13 @@ const config: SiteConfig = {
     email: 'wdlin233@163.com',
     rss: true,
   },
-  giscus: undefined,
+  giscus: {
+    repo: 'wdlin233/wdlin233.github.io',
+    repoId: 'R_kgDONC_3IQ',
+    category: 'Announcements',
+    categoryId: 'DIC_kwDONC_3Ic4DMG2N',
+    reactionsEnabled: true,
+  },
   characters: {},
 }
 

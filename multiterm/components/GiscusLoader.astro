@@ -24,6 +24,14 @@ const reactionsEnabled = giscusConfig.reactionsEnabled ? '1' : '0'
 >
 </div>
 <script>
+  function getGiscusThemeUrl(theme: string) {
+    const origin = document.querySelector('.giscus')?.getAttribute('data-origin')
+    if (!origin) {
+      throw new Error('Giscus origin is missing.')
+    }
+    return `${origin}/giscus/${theme}.css/`
+  }
+
   function loadGiscus() {
     const giscusDiv = document.querySelector('.giscus')
     if (!giscusDiv) {
@@ -59,7 +67,7 @@ const reactionsEnabled = giscusConfig.reactionsEnabled ? '1' : '0'
     script.setAttribute('data-emit-metadata', '0')
     // Setting this to 'bottom' doesn't work. Not sure why.
     script.setAttribute('data-input-position', 'top')
-    script.setAttribute('data-theme', `${origin}/giscus/${theme}.css`)
+    script.setAttribute('data-theme', getGiscusThemeUrl(theme))
     script.setAttribute('data-lang', 'zh-CN')
     script.setAttribute('loading', 'lazy')
     script.crossOrigin = 'anonymous'
@@ -83,7 +91,7 @@ const reactionsEnabled = giscusConfig.reactionsEnabled ? '1' : '0'
       return
     }
     giscusFrame.contentWindow?.postMessage(
-      { giscus: { setConfig: { theme: `${origin}/giscus/${theme}.css` } } },
+      { giscus: { setConfig: { theme: getGiscusThemeUrl(theme) } } },
       'https://giscus.app',
     )
   }
